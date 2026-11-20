@@ -19,6 +19,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from berrycast.countries import WORLD_REGDOMAIN
 from berrycast.dev.nm import split_terse
 
 TTY = os.environ.get("BERRYCAST_TTY", "/dev/tty1")
@@ -42,6 +43,7 @@ class Info:
     signal: int | None = None
     addresses: dict[str, str] = field(default_factory=dict)  # interface -> adresse IPv4
     ssh_password_set: bool | None = None
+    regdomain: str | None = None  # pays Wi-Fi appliqué (« FR », « 00 » = international)
     messages: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     build: str = ""
@@ -80,6 +82,7 @@ def gather() -> Info:
     try:
         state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
         info.ssh_password_set = state.get("ssh_password_set")
+        info.regdomain = state.get("regdomain")
         info.messages = state.get("messages", [])
         info.errors = state.get("errors", [])
     except (OSError, ValueError):
@@ -127,8 +130,16 @@ def render_lines(info: Info) -> list[str]:
     else:
         lines.append("Adresse IP : aucune")
 
+    warnings = []
+    if info.regdomain == WORLD_REGDOMAIN:
+        warnings.append("ATTENTION : pays Wi-Fi non défini, réglage international utilisé")
+        warnings.append("(ligne « pays= » de berrycast-wifi.txt, par ex. FR, CH, BE, CA)")
+    elif info.regdomain:
+        lines.append(f"Pays Wi-Fi : {info.regdomain}")
     if info.ssh_password_set is False:
-        lines += ["", "ATTENTION : mot de passe SSH non défini (voir berrycast-wifi.txt)"]
+        warnings.append("ATTENTION : mot de passe SSH non défini (voir berrycast-wifi.txt)")
+    if warnings:
+        lines += [""] + warnings
 
     if info.errors:
         lines.append("")

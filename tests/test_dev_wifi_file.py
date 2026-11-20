@@ -29,11 +29,35 @@ def test_validate_full_settings():
 
 
 def test_validate_empty_template_does_nothing():
-    s = validate(parse(render(country="FR")))
-    assert s.errors == []
-    assert s.ssid is None and s.ssh_password is None
-    assert s.country == "FR"
+    s = validate(parse(render()))
+    assert s.errors == [] and s.warnings == []
+    assert s.ssid is None and s.ssh_password is None and s.country is None
     assert not s.has_secrets()
+
+
+def test_country_lowercase_accepted():
+    assert validate({"pays": "ch"}).country == "CH"
+
+
+def test_invalid_country_is_only_a_warning():
+    s = validate({"wifi_nom": "Box", "wifi_mot_de_passe": "motdepasse", "pays": "France"})
+    assert s.errors == []
+    assert s.ssid == "Box"  # le Wi-Fi est quand même configuré
+    assert s.country is None and s.country_invalid == "France"
+    assert len(s.warnings) == 1 and "international" in s.warnings[0]
+
+
+def test_empty_country_with_wifi_is_a_warning():
+    s = validate({"wifi_nom": "Box", "wifi_mot_de_passe": "motdepasse"})
+    assert s.errors == [] and s.ssid == "Box" and s.country is None
+    assert len(s.warnings) == 1 and "non renseigné" in s.warnings[0]
+
+
+def test_template_lists_examples_and_link():
+    text = render()
+    for code in ("CH", "FR", "BE", "CA", "US", "DE"):
+        assert code in text
+    assert "https://fr.wikipedia.org/wiki/ISO_3166-1_alpha-2" in text
 
 
 def test_open_network_without_password():
@@ -48,7 +72,8 @@ def test_validate_errors():
         "wifi_mot_de_passe": "court",
         "ssh_mot_de_passe": "1234",
     })
-    assert len(s.errors) == 3
+    assert len(s.errors) == 2  # mot de passe Wi-Fi et SSH ; le pays n'est qu'un avertissement
+    assert len(s.warnings) == 1
     assert s.country is None and s.ssid is None and s.ssh_password is None
 
 

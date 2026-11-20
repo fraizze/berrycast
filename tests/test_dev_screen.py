@@ -42,6 +42,17 @@ def test_render_not_configured():
     assert "ERREUR : pays invalide" in lines
 
 
+def test_render_world_regdomain_warning():
+    lines = render_lines(Info(wifi_state="connected", ssid="Box", regdomain="00"))
+    assert "ATTENTION : pays Wi-Fi non défini, réglage international utilisé" in lines
+
+
+def test_render_country_shown_without_warning():
+    lines = render_lines(Info(wifi_state="connected", ssid="Box", regdomain="CH"))
+    assert "Pays Wi-Fi : CH" in lines
+    assert not any("ATTENTION" in line for line in lines)
+
+
 def test_layout_centers_and_fits():
     out = layout(["Titre", "abc"], cols=11, rows=6)
     assert out.count("\n") == 2 + 1  # 2 lignes vides au-dessus + 1 entre les deux lignes

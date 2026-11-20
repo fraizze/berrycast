@@ -48,7 +48,7 @@ Le développeur teste sur un **Raspberry Pi 3 Model B** + un **PC Windows 11** +
 1. **Nom personnalisable** : un seul nom (ex. « TV Salon ») utilisé partout : nom affiché dans Windows + K, dans la liste AirPlay de l'iPhone, nom d'hôte (`tv-salon.local`), écran d'accueil.
 2. **Premier lancement** : une petite interface de configuration.
    - L'écran HDMI affiche : « Bienvenue », un Wi-Fi temporaire à rejoindre (`BerryCast-Setup-XXXX` + mot de passe affiché), l'adresse de la page de réglage, et un **code de vérification à 6 chiffres**.
-   - Sur le téléphone, la page demande d'abord le **code de vérification** (preuve qu'on voit l'écran), puis : nom de l'appareil, réseau Wi-Fi de la maison (liste des réseaux détectés + mot de passe), langue.
+   - Sur le téléphone, la page demande d'abord le **code de vérification** (preuve qu'on voit l'écran), puis : nom de l'appareil, réseau Wi-Fi de la maison (liste des réseaux détectés + mot de passe), langue, **pays** (liste déroulante de tous les pays du monde, codes ISO 3166-1 de `berrycast/countries.py` ; vide/inconnu = réglage Wi-Fi international « 00 » + avertissement, jamais bloquant).
    - Ensuite le Pi rejoint le Wi-Fi de la maison et passe en mode normal.
 3. **Écran d'accueil (mode normal)** sur HDMI, fond noir texte blanc : nom de l'appareil, « Prêt à recevoir », comment se connecter (Windows + K / Recopie de l'écran), adresse de la page de réglage.
 4. **Code de vérification à la connexion** :

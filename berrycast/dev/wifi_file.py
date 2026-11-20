@@ -14,10 +14,11 @@ ce qui permet de le tester sur n'importe quel PC.
 
 from __future__ import annotations
 
-import re
 import string
 import unicodedata
 from dataclasses import dataclass, field
+
+from berrycast.countries import normalize_country
 
 FILE_NAME = "berrycast-wifi.txt"
 
@@ -41,7 +42,13 @@ TEMPLATE = """\
 #
 # wifi_nom          : nom exact du réseau Wi-Fi (attention aux majuscules)
 # wifi_mot_de_passe : mot de passe du Wi-Fi (vide = réseau sans mot de passe)
-# pays              : code du pays en 2 lettres (FR, BE, CH, CA...)
+# pays              : pays où se trouve le Raspberry Pi, code à 2 lettres
+#                     (norme ISO 3166, majuscules ou minuscules). Exemples :
+#                     CH Suisse, FR France, BE Belgique, CA Canada,
+#                     US États-Unis, DE Allemagne, GB Royaume-Uni, ES Espagne
+#                     Liste complète : https://fr.wikipedia.org/wiki/ISO_3166-1_alpha-2
+#                     Vide ou inconnu : réglage Wi-Fi international (fonctionne,
+#                     mais certains canaux sont désactivés).
 # ssh_mot_de_passe  : mot de passe de l'utilisateur « pi » pour SSH
 #                     (8 caractères minimum)
 #
@@ -61,9 +68,11 @@ class DevSettings:
 
     ssid: str | None = None
     psk: str | None = None  # None ou "" = réseau ouvert (sans mot de passe)
-    country: str | None = None
+    country: str | None = None  # code ISO valide, ou None = réglage international
+    country_invalid: str | None = None  # ce qui a été tapé, si ce n'est pas un code valide
     ssh_password: str | None = None
-    errors: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)  # bloquant pour la ligne concernée
+    warnings: list[str] = field(default_factory=list)  # non bloquant
 
     def has_secrets(self) -> bool:
         return bool(self.psk or self.ssh_password)
@@ -99,12 +108,14 @@ def validate(values: dict[str, str]) -> DevSettings:
     """Vérifie les valeurs lues et les convertit en réglages (avec messages d'erreur)."""
     s = DevSettings()
 
-    country = values.get(KEY_COUNTRY, "").upper()
-    if country:
-        if re.fullmatch(r"[A-Z]{2}", country):
-            s.country = country
-        else:
-            s.errors.append(f"pays « {country} » invalide (2 lettres, par ex. FR)")
+    # Pays : jamais bloquant. Vide ou inconnu -> réglage Wi-Fi international + avertissement.
+    typed_country = values.get(KEY_COUNTRY, "")
+    s.country = normalize_country(typed_country)
+    if typed_country and s.country is None:
+        s.country_invalid = typed_country
+        s.warnings.append(
+            f"pays « {typed_country} » inconnu : réglage Wi-Fi international utilisé"
+        )
 
     ssid = values.get(KEY_SSID, "")
     psk = values.get(KEY_PSK, "")
@@ -116,6 +127,8 @@ def validate(values: dict[str, str]) -> DevSettings:
         else:
             s.ssid = ssid
             s.psk = psk or None
+            if not typed_country:
+                s.warnings.append("pays non renseigné : réglage Wi-Fi international utilisé")
     elif psk:
         s.errors.append("mot de passe Wi-Fi donné sans nom de Wi-Fi")
 

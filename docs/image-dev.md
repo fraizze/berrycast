@@ -39,6 +39,22 @@ SSH activé, **aucun mot de passe par défaut**.
 
 4. **Fichier → Enregistrer**, puis dans l'Explorateur : clic droit sur **bootfs** → **Éjecter**.
 
+**Le champ `pays`** : le code à 2 lettres du pays où se trouve le Raspberry Pi (norme **ISO 3166**,
+en majuscules ou minuscules). Il fixe les canaux et la puissance Wi-Fi autorisés dans ce pays.
+Tous les pays du monde sont acceptés. Exemples :
+
+| Code | Pays | Code | Pays |
+|---|---|---|---|
+| `CH` | Suisse | `US` | États-Unis |
+| `FR` | France | `DE` | Allemagne |
+| `BE` | Belgique | `GB` | Royaume-Uni |
+| `CA` | Canada | `ES` | Espagne |
+
+Liste complète : <https://fr.wikipedia.org/wiki/ISO_3166-1_alpha-2>.
+Si le champ est **vide ou inconnu**, rien n'est bloqué : le Pi utilise le **réglage Wi-Fi
+international** (il fonctionne partout, mais certains canaux sont désactivés) et la TV affiche un
+avertissement.
+
 **Avec le partage de connexion d'un iPhone :**
 
 - `wifi_nom` = le **nom de l'iPhone** (Réglages → Général → Informations → Nom), en respectant les
@@ -90,7 +106,8 @@ ssh-keygen -R berrycast.local
 
 | Ce que montre la TV | Que faire |
 |---|---|
-| `Wi-Fi : indisponible (pays non réglé ?)` | vérifier la ligne `pays=` (2 lettres) |
+| `Wi-Fi : indisponible (pays non réglé ?)` | vérifier la ligne `pays=` (2 lettres) et la ligne `wifi_nom=` |
+| `ATTENTION : pays Wi-Fi non défini, réglage international utilisé` | remplir `pays=` avec un code valide (le Wi-Fi marche quand même) |
 | `Wi-Fi : non connecté` | partage de connexion actif ? même nom exact ? « Maximiser la compatibilité » activé ? |
 | `ERREUR : …` | le message dit quelle ligne corriger ; il est aussi écrit en haut de `berrycast-wifi.txt` |
 | `ATTENTION : mot de passe SSH non défini` | remplir `ssh_mot_de_passe` (8 caractères minimum) |

@@ -23,6 +23,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from berrycast import countries
 from berrycast.dev import wifi_file
 from berrycast.dev.nm import split_terse
 
@@ -45,8 +46,31 @@ def run(
     )
 
 
+CMDLINE = BOOT_DIR / "cmdline.txt"
+REGDOM_PARAM = "cfg80211.ieee80211_regdom="
+
+
 def apply_country(country: str) -> None:
+    """Règle le pays Wi-Fi avec l'outil officiel (il l'écrit aussi dans cmdline.txt)."""
     run(["raspi-config", "nonint", "do_wifi_country", country])
+
+
+def apply_world_regdomain() -> None:
+    """Réglage Wi-Fi international « 00 » : retire le pays de cmdline.txt et l'applique."""
+    try:
+        text = CMDLINE.read_text(encoding="utf-8")
+        words = text.split()
+        kept = [w for w in words if not w.startswith(REGDOM_PARAM)]
+        if kept != words:
+            write_boot_file(CMDLINE, " ".join(kept) + "\n")
+    except OSError as exc:
+        log.warning("cmdline.txt non modifié : %s", exc)
+    run(["iw", "reg", "set", countries.WORLD_REGDOMAIN], check=False)
+
+
+def current_regdomain() -> str | None:
+    """Pays Wi-Fi actuellement appliqué par le système (« FR », « 00 »…), None si inconnu."""
+    return countries.parse_iw_reg_get(run(["iw", "reg", "get"], check=False).stdout)
 
 
 def enable_wifi_radio() -> None:
@@ -155,26 +179,38 @@ def save_state(state: dict) -> None:
     os.replace(tmp, STATE_FILE)
 
 
-def apply_file(path: Path) -> tuple[list[str], list[str]]:
-    """Applique le fichier. Renvoie (messages, erreurs)."""
+def apply_file(path: Path) -> tuple[list[str], list[str], list[str]]:
+    """Applique le fichier. Renvoie (messages, avertissements, erreurs)."""
     values = wifi_file.parse(path.read_text(encoding="utf-8", errors="replace"))
     settings = wifi_file.validate(values)
     messages: list[str] = []
+    warnings = list(settings.warnings)
     errors = list(settings.errors)
 
-    # On n'agit que s'il y a du nouveau : un mot de passe à appliquer, une erreur à
-    # signaler, ou un nom de Wi-Fi différent de celui déjà enregistré (réseau ouvert).
-    # Sinon (cas normal après le premier démarrage), on ne touche à rien.
+    # On n'agit que s'il y a du nouveau : un mot de passe à appliquer, une erreur ou un
+    # pays inconnu à signaler, un nom de Wi-Fi différent de celui déjà enregistré
+    # (réseau ouvert), ou un autre pays. Sinon (cas normal après le premier démarrage),
+    # on ne touche à rien.
     new_ssid = settings.ssid and settings.ssid != configured_ssid()
-    if not (settings.has_secrets() or errors or new_ssid):
-        return [], []
+    new_country = settings.country and settings.country != current_regdomain()
+    if not (
+        settings.has_secrets() or errors or settings.country_invalid or new_ssid or new_country
+    ):
+        return [], [], []
 
+    # Pays : jamais bloquant. Inconnu ou refusé -> réglage international.
     if settings.country:
         try:
             apply_country(settings.country)
             messages.append(f"Pays Wi-Fi : {settings.country}")
         except subprocess.CalledProcessError:
-            errors.append(f"pays « {settings.country} » refusé par le système")
+            warnings.append(
+                f"pays « {settings.country} » refusé par le système : "
+                "réglage Wi-Fi international utilisé"
+            )
+            apply_world_regdomain()
+    else:
+        apply_world_regdomain()
 
     if settings.ssh_password:
         try:
@@ -183,7 +219,9 @@ def apply_file(path: Path) -> tuple[list[str], list[str]]:
         except subprocess.CalledProcessError:
             errors.append("impossible d'enregistrer le mot de passe SSH")
 
-    if settings.ssid:
+    # Wi-Fi : seulement s'il y a un mot de passe Wi-Fi ou un nouveau nom
+    # (changer juste le pays ou le mot de passe SSH ne doit pas couper le Wi-Fi).
+    if settings.ssid and (settings.psk or new_ssid):
         enable_wifi_radio()
         wait_for_wifi_device()
         ssid = wifi_file.pick_ssid(settings.ssid, visible_ssids())
@@ -197,16 +235,19 @@ def apply_file(path: Path) -> tuple[list[str], list[str]]:
     # Réécriture du fichier, sans mot de passe, avec le compte rendu en haut.
     stamp = datetime.now().strftime("%d/%m/%Y %H:%M")
     report = [f"Lu par le Raspberry Pi le {stamp}"]
-    report += messages + [f"ERREUR : {e}" for e in errors]
+    report += messages
+    report += [f"ATTENTION : {w}" for w in warnings]
+    report += [f"ERREUR : {e}" for e in errors]
     write_boot_file(
         path,
         wifi_file.render(
             ssid=values.get(wifi_file.KEY_SSID, ""),
-            country=values.get(wifi_file.KEY_COUNTRY, ""),
+            # un pays inconnu n'est pas recopié (sinon il serait signalé à chaque démarrage)
+            country=settings.country or "",
             messages=report,
         ),
     )
-    return messages, errors
+    return messages, warnings, errors
 
 
 def main() -> int:
@@ -216,23 +257,28 @@ def main() -> int:
 
     if not path.exists():
         # Fichier supprimé : on remet un modèle vide pour pouvoir le remplir plus tard.
-        write_boot_file(path, wifi_file.render(country="FR"))
+        write_boot_file(path, wifi_file.render())
         log.info("Modèle %s recréé.", path)
     else:
         try:
-            messages, errors = apply_file(path)
+            messages, warnings, errors = apply_file(path)
         except Exception as exc:  # ne jamais bloquer le démarrage
             log.exception("Erreur pendant l'application de %s", path)
-            messages, errors = [], [f"erreur inattendue : {exc}"]
-        if messages or errors:
+            messages, warnings, errors = [], [], [f"erreur inattendue : {exc}"]
+        if messages or warnings or errors:
             state["last_applied"] = datetime.now().isoformat(timespec="seconds")
             state["messages"] = messages
+            state["warnings"] = warnings
             state["errors"] = errors
         for m in messages:
             log.info("%s", m)
-        for e in errors:
-            log.warning("%s", e)
+        for w in warnings + errors:
+            log.warning("%s", w)
 
+    # À chaque démarrage : radio Wi-Fi activée (même sans pays : réglage international),
+    # puis on note l'état réel pour l'écran HDMI.
+    enable_wifi_radio()
+    state["regdomain"] = current_regdomain()
     state["ssh_password_set"] = ssh_password_is_set()
     save_state(state)
     return 0

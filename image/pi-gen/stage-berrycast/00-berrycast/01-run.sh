@@ -47,5 +47,5 @@ if [ -d /etc/cloud ]; then
 fi
 
 # Modèle vide de berrycast-wifi.txt sur la partition de démarrage
-PYTHONPATH=/opt/berrycast python3 -c "from berrycast.dev import wifi_file; open('/boot/firmware/berrycast-wifi.txt', 'w', encoding='utf-8', newline='').write(wifi_file.render(country='FR'))"
+PYTHONPATH=/opt/berrycast python3 -c "from berrycast.dev import wifi_file; open('/boot/firmware/berrycast-wifi.txt', 'w', encoding='utf-8', newline='').write(wifi_file.render())"
 EOF
