@@ -153,7 +153,7 @@ def main() -> int:
         return 1
     old_wfd = wpa.Get(WPA, "WFDIEs", dbus_interface=PROPS)
     try:
-        methods = iface.Get(WPS, "ConfigMethods", dbus_interface=PROPS)
+        methods = str(iface.Get(WPS, "ConfigMethods", dbus_interface=PROPS)) or "(aucune)"
     except dbus.DBusException:
         methods = "?"
 
