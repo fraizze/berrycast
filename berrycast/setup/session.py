@@ -32,7 +32,8 @@ class Session:
         self.form = form
         self.scan = scan
         self.submit = submit
-        # Sans root d'abord ; en cas d'échec, la partie root applique la disposition.
+        # Changer la disposition de la console demande des droits root (vérifié sur le Pi :
+        # « Permission denied » sans root) : la partie root s'en charge.
         self.apply_keyboard = apply_keyboard or self._apply_keyboard_default
         self.state = "form"
         self.notice = ""  # message en bas de l'écran
@@ -76,15 +77,12 @@ class Session:
         self.start(work, t("setup_keyboard_applying"))
 
     def _apply_keyboard_default(self, layout: keyboards.Layout) -> tuple[bool, str]:
-        ok, error = keyboards.apply_local(layout)
-        if ok:
-            return True, ""
         try:
             result = self.submit({"action": "keyboard", "keyboard_layout": layout.layout,
                                   "keyboard_variant": layout.variant})
         except OSError as exc:
             return False, str(exc)
-        return bool(result.get("ok")), "; ".join(result.get("details", [])) or error
+        return bool(result.get("ok")), "; ".join(result.get("details", []))
 
     def notify(self, message: str, seconds: float = 5) -> None:
         self.notice = message

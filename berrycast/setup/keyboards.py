@@ -2,16 +2,15 @@
 
 L'application passe par les outils de la console Debian : « ckbcomp » (paquet
 console-setup) traduit une disposition XKB en table pour la console, « loadkeys »
-(paquet kbd) la charge. Sans root, le noyau l'autorise au processus dont c'est le
-terminal de contrôle (tty1, donné par systemd avec StandardInput=tty). Si cela échoue
-quand même, l'interface demande à la partie root (berrycast.setup.apply) de le faire.
+(paquet kbd) la charge sur tty1. Charger une table demande des droits root
+(CAP_SYS_TTY_CONFIG ; vérifié sur le Pi : « Permission denied » sans root) : c'est donc
+la partie root (berrycast.setup.apply) qui appelle apply(), à la demande de l'interface.
 """
 
 from __future__ import annotations
 
 import os
 import subprocess
-import sys
 import tempfile
 from dataclasses import dataclass
 
@@ -82,11 +81,3 @@ def apply(layout: Layout, console: str | None = None) -> tuple[bool, str]:
     if result.returncode != 0:
         return False, f"loadkeys : {result.stderr.decode(errors='replace').strip()}"
     return True, ""
-
-
-def apply_local(layout: Layout) -> tuple[bool, str]:
-    """Essai sans root, sur le terminal de contrôle (tty1). Journalise l'erreur éventuelle."""
-    ok, error = apply(layout, console="/dev/tty")
-    if not ok:
-        print(f"Clavier « {layout.label} » non appliqué sans root : {error}", file=sys.stderr)
-    return ok, error

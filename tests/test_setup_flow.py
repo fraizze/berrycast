@@ -218,12 +218,9 @@ def test_console_shows_connection_error():
 # --- Clavier -----------------------------------------------------------------
 
 
-def test_keyboard_failure_falls_back_to_root_then_shows_error(monkeypatch):
-    from berrycast.setup import keyboards
-
+def test_keyboard_goes_to_root_and_failure_stays_visible():
     form = SetupForm(NETWORKS, COUNTRIES, detected_country="CH")
     sent = []
-    monkeypatch.setattr(keyboards, "apply_local", lambda layout: (False, "loadkeys : refusé"))
     session = Session(form, scan=lambda r: NETWORKS,
                       submit=lambda req: (sent.append(req), {"ok": False, "details": ["x"]})[1])
     session.keyboard_changed()
@@ -233,11 +230,9 @@ def test_keyboard_failure_falls_back_to_root_then_shows_error(monkeypatch):
     assert session.busy == ""
 
 
-def test_keyboard_root_fallback_success(monkeypatch):
-    from berrycast.setup import keyboards
-
+def test_keyboard_root_success():
     form = SetupForm(NETWORKS, COUNTRIES)
-    monkeypatch.setattr(keyboards, "apply_local", lambda layout: (False, "refusé"))
+    form.rows_by_key["keyboard"].error = "ancienne erreur"
     session = Session(form, scan=lambda r: NETWORKS, submit=lambda req: {"ok": True})
     session.keyboard_changed()
     session.wait(2)

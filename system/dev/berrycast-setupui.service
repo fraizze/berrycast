@@ -5,10 +5,10 @@
 # Pour la relancer à la main : sudo systemctl start berrycast-setupui
 #
 # Droits : utilisateur « berrycast » (pas root).
-# - clavier et écran : tty1 donné par systemd (StandardInput/StandardOutput=tty) ; c'est
-#   aussi ce qui autorise à changer la disposition du clavier de la console (loadkeys) ;
-# - application des réglages : demande déposée dans /run/berrycast-setup, exécutée en root
-#   par berrycast-setup-apply.service (déclenché par berrycast-setup-apply.path).
+# - clavier et écran : tty1 donné par systemd (StandardInput/StandardOutput=tty) ;
+# - disposition du clavier et application des réglages : demande déposée dans
+#   /run/berrycast-setup, exécutée en root par berrycast-setup-apply.service (déclenché
+#   par berrycast-setup-apply.path) : changer la table du clavier demande des droits root.
 
 [Unit]
 Description=BerryCast : configuration sur la TV (clavier)
