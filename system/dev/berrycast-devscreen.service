@@ -1,0 +1,31 @@
+# Image de DÉVELOPPEMENT : écran HDMI « BerryCast dev » (adresse IP, état du Wi-Fi)
+# sur la console tty1, fond noir, texte blanc.
+
+[Unit]
+Description=BerryCast dev : écran HDMI
+After=systemd-user-sessions.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+User=berrycast
+Group=berrycast
+SupplementaryGroups=tty
+WorkingDirectory=/opt/berrycast
+Environment=PYTHONPATH=/opt/berrycast
+Environment=PYTHONUNBUFFERED=1
+# Grande police console (Terminus 32x16) ; « + » = cette commande seule tourne en root,
+# « - » = on continue même si elle échoue.
+ExecStartPre=-+/usr/bin/setfont -C /dev/tty1 /usr/share/consolefonts/Lat15-TerminusBold32x16.psf.gz
+ExecStart=/usr/bin/python3 -m berrycast.dev.screen
+Restart=always
+RestartSec=2
+
+# Durcissement : l'écran n'a besoin de rien d'autre que lire l'état et écrire sur tty1
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

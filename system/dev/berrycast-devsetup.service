@@ -1,0 +1,21 @@
+# Image de DÉVELOPPEMENT : applique /boot/firmware/berrycast-wifi.txt au démarrage
+# (pays Wi-Fi, mot de passe SSH de « pi », connexion Wi-Fi), puis s'arrête.
+#
+# Tourne en root : nécessaire pour changer un mot de passe système et les
+# connexions réseau du système. Ne lit qu'un fichier de la partition de démarrage.
+
+[Unit]
+Description=BerryCast dev : réglages depuis berrycast-wifi.txt
+After=NetworkManager.service local-fs.target
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/berrycast
+Environment=PYTHONPATH=/opt/berrycast
+ExecStart=/usr/bin/python3 -m berrycast.dev.devsetup
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

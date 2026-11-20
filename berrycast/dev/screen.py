@@ -1,0 +1,189 @@
+"""Écran HDMI de l'image de développement : « BerryCast dev », adresse IP, état du Wi-Fi.
+
+Fond noir, texte blanc, centré, écrit directement sur la console tty1 (pas de
+serveur graphique). Version minimale en attendant le vrai écran (étape 05).
+
+Lancé par berrycast-devscreen.service sous l'utilisateur « berrycast »
+(groupe tty, qui a le droit d'écrire sur /dev/tty1). Pas besoin de root.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import socket
+import struct
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from berrycast.dev.nm import split_terse
+
+TTY = os.environ.get("BERRYCAST_TTY", "/dev/tty1")
+STATE_FILE = Path(os.environ.get("BERRYCAST_STATE_DIR", "/var/lib/berrycast")) / "devsetup.json"
+BUILD_INFO = Path(os.environ.get("BERRYCAST_HOME", "/opt/berrycast")) / "BUILD_INFO"
+REFRESH_SECONDS = 3
+FULL_REDRAW_SECONDS = 30  # redessine de toute façon (efface d'éventuels messages du noyau)
+
+# Séquences de contrôle de la console Linux
+CLEAR = "\033[0m\033[2J\033[H"
+HIDE_CURSOR = "\033[?25l"
+NO_BLANKING = "\033[9;0]"  # ne jamais éteindre l'écran
+BOLD, NORMAL = "\033[1m", "\033[0m"
+
+
+@dataclass
+class Info:
+    hostname: str = "berrycast"
+    wifi_state: str = "unknown"  # état NetworkManager de wlan0
+    ssid: str | None = None
+    signal: int | None = None
+    addresses: dict[str, str] = field(default_factory=dict)  # interface -> adresse IPv4
+    ssh_password_set: bool | None = None
+    messages: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    build: str = ""
+
+
+def nmcli(*args: str) -> str:
+    try:
+        return subprocess.run(
+            ["nmcli", *args], capture_output=True, text=True, timeout=10
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def gather() -> Info:
+    """Collecte l'état actuel (sans droits particuliers)."""
+    info = Info(hostname=socket.gethostname())
+
+    for line in nmcli("-t", "-f", "DEVICE,TYPE,STATE", "device").splitlines():
+        dev, typ, state = (split_terse(line) + ["", "", ""])[:3]
+        if typ == "wifi" and dev == "wlan0":
+            info.wifi_state = state
+        if typ in ("wifi", "ethernet") and state == "connected":
+            out = nmcli("-g", "IP4.ADDRESS", "device", "show", dev).strip()
+            if out:
+                # « 172.20.10.2/28 » (plusieurs adresses séparées par « | »)
+                info.addresses[dev] = out.split("|")[0].strip().split("/")[0]
+
+    for line in nmcli("-t", "-f", "ACTIVE,SSID,SIGNAL", "device", "wifi", "list",
+                      "--rescan", "no").splitlines():
+        active, ssid, signal = (split_terse(line) + ["", "", ""])[:3]
+        if active == "yes":
+            info.ssid = ssid
+            info.signal = int(signal) if signal.isdigit() else None
+
+    try:
+        state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        info.ssh_password_set = state.get("ssh_password_set")
+        info.messages = state.get("messages", [])
+        info.errors = state.get("errors", [])
+    except (OSError, ValueError):
+        pass
+
+    try:
+        build = dict(
+            line.split("=", 1) for line in BUILD_INFO.read_text().splitlines() if "=" in line
+        )
+        info.build = f"{build.get('commit', '?')} du {build.get('date', '?')}"
+    except OSError:
+        pass
+
+    return info
+
+
+WIFI_STATES = {
+    "connected": "connecté",
+    "connecting": "connexion en cours…",
+    "disconnected": "non connecté",
+    "unavailable": "indisponible (pays non réglé ?)",
+    "unmanaged": "non géré",
+}
+
+
+def render_lines(info: Info) -> list[str]:
+    """Texte à afficher (fonction pure, testée sans Raspberry Pi)."""
+    lines = ["BerryCast dev", ""]
+
+    if info.wifi_state == "connected" and info.ssid:
+        signal = f" ({info.signal} %)" if info.signal is not None else ""
+        lines.append(f"Wi-Fi : connecté à « {info.ssid} »{signal}")
+    else:
+        lines.append(f"Wi-Fi : {WIFI_STATES.get(info.wifi_state, info.wifi_state)}")
+        if info.wifi_state != "connected":
+            lines.append("(réglage : fichier berrycast-wifi.txt sur la carte microSD)")
+
+    lines.append("")
+    if info.addresses:
+        for dev, ip in info.addresses.items():
+            label = "Wi-Fi" if dev.startswith("wlan") else "Câble"
+            lines.append(f"Adresse IP ({label}) : {ip}")
+        first_ip = next(iter(info.addresses.values()))
+        lines += ["", f"SSH : ssh pi@{info.hostname}.local", f"  ou  ssh pi@{first_ip}"]
+    else:
+        lines.append("Adresse IP : aucune")
+
+    if info.ssh_password_set is False:
+        lines += ["", "ATTENTION : mot de passe SSH non défini (voir berrycast-wifi.txt)"]
+
+    if info.errors:
+        lines.append("")
+        lines += [f"ERREUR : {e}" for e in info.errors]
+
+    if info.build:
+        lines += ["", f"version {info.build}"]
+    return lines
+
+
+def terminal_size(fd: int) -> tuple[int, int]:
+    """(colonnes, lignes) de la console ; 80x25 si inconnu."""
+    # Importés ici : ces modules n'existent que sous Linux (les tests tournent aussi sous Windows).
+    import fcntl
+    import termios
+
+    try:
+        rows, cols, _, _ = struct.unpack("HHHH", fcntl.ioctl(fd, termios.TIOCGWINSZ, b"\0" * 8))
+        if rows and cols:
+            return cols, rows
+    except OSError:
+        pass
+    return 80, 25
+
+
+def layout(lines: list[str], cols: int, rows: int) -> str:
+    """Centre le texte horizontalement et verticalement ; titre en gras."""
+    lines = [line[:cols] for line in lines[:rows]]
+    top = max(0, (rows - len(lines)) // 2)
+    out = [CLEAR, HIDE_CURSOR, NO_BLANKING, "\n" * top]
+    for i, line in enumerate(lines):
+        pad = " " * max(0, (cols - len(line)) // 2)
+        text = f"{BOLD}{line}{NORMAL}" if i == 0 else line
+        out.append(pad + text + ("\n" if i < len(lines) - 1 else ""))
+    return "".join(out)
+
+
+def main() -> int:
+    last_text, last_full = None, 0.0
+    while True:
+        try:
+            fd = os.open(TTY, os.O_WRONLY | os.O_NOCTTY)
+            try:
+                cols, rows = terminal_size(fd)
+                lines = render_lines(gather())
+                now = time.monotonic()
+                if lines != last_text or now - last_full > FULL_REDRAW_SECONDS:
+                    os.write(fd, layout(lines, cols, rows).encode("utf-8"))
+                    last_text, last_full = lines, now
+            finally:
+                os.close(fd)
+        except OSError as exc:
+            print(f"Écran : erreur d'écriture sur {TTY} : {exc}", file=sys.stderr)
+        time.sleep(REFRESH_SECONDS)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
