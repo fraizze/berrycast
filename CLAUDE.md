@@ -103,6 +103,7 @@ berrycast/
 ## Méthode de travail (à respecter)
 - **Petites étapes.** Une étape = un prompt du développeur. À la fin de chaque étape : résumé de ce qui a été fait, ce qui reste, et **commandes exactes** pour tester sur le Pi.
 - Le développeur est **débutant** : explique en français simple, donne des commandes à copier-coller une par une.
+- Pour **chaque** commande, indique **où** la taper : « PC — PowerShell » ou « Pi — session SSH », et s'il faut **rester dans la même fenêtre** ou **en ouvrir une nouvelle**. Préfère les chemins complets (ex. `C:\Users\<votre-nom>\code\berrycast\...`) pour ne pas dépendre du dossier courant.
 - Le Pi est joignable en SSH (`ssh pi@<adresse>`). Tu peux proposer des commandes à exécuter sur le Pi ; **demande avant** de lancer quoi que ce soit qui modifie le réseau du Pi (risque de perdre la connexion SSH) et prévois toujours un moyen de revenir en arrière.
 - Ne pas inventer d'API : vérifier la documentation (wpa_supplicant D-Bus, spécification Wi-Fi Display, options d'UxPlay, GStreamer) avant d'écrire le code. Si quelque chose est incertain, faire d'abord un petit prototype dans `spikes/`.
 - Commits petits et clairs (en français ou anglais, mais cohérents). Ne jamais committer de secrets.
