@@ -345,16 +345,23 @@ def main() -> int:
 
     decoder = KeyDecoder()
     running = True
+    last_tick = None
     try:
         while running:
             ready, _, _ = select.select([fd], [], [], 0.05)
             data = os.read(fd, 1024) if ready else b""
-            for kind, value in decoder.feed(data, final=not ready):
+            events = decoder.feed(data, final=not ready)
+            for kind, value in events:
                 running = ui.handle(kind, value)
                 if not running:
                     break
             pygame.event.pump()
-            ui.draw()
+            # On ne redessine que si nécessaire (touche, clignotement du curseur, message) :
+            # le Pi 3 dessine en logiciel, un écran 1080p complet coûte cher.
+            tick = (int(time.monotonic() * 2), time.monotonic() < ui.notice_until)
+            if events or tick != last_tick:
+                ui.draw()
+                last_tick = tick
     finally:
         if saved is not None:
             import termios
