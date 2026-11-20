@@ -1,6 +1,22 @@
 # image/
 
-Configuration de construction de l'**image prête à flasher** (`.img.xz`) — étape 11.
+Construction des images à flasher avec **balenaEtcher**.
 
-L'image sera construite avec l'outil officiel Raspberry Pi (rpi-image-gen ou pi-gen, à confirmer),
-dans GitHub Actions, puis publiée dans les *Releases* du dépôt.
+## Image de développement (`berrycast-dev-<date>-<commit>.img.xz`)
+
+Construite par GitHub Actions ([`.github/workflows/image-dev.yml`](../.github/workflows/image-dev.yml))
+à chaque envoi sur `main`, et publiée dans la pré-version **« dev »** des *Releases*.
+
+- Outil : **pi-gen**, l'outil officiel avec lequel Raspberry Pi construit Raspberry Pi OS
+  (branche `arm64`, Debian 13 « Trixie »), lancé dans Docker sur une machine ARM 64 bits de GitHub.
+- Base : stages 0 à 2 de pi-gen = **Raspberry Pi OS Lite 64 bits**.
+- Notre ajout : [`pi-gen/stage-berrycast/`](pi-gen/stage-berrycast/) (code du dépôt dans `/opt/berrycast`,
+  services `system/dev/`, fichier `berrycast-wifi.txt` sur la partition de démarrage).
+- Réglages : [`pi-gen/config`](pi-gen/config) (utilisateur `pi`, nom d'hôte `berrycast`, SSH activé,
+  aucun mot de passe connu).
+
+Mode d'emploi : [`docs/image-dev.md`](../docs/image-dev.md).
+
+## Image finale (étape 11)
+
+À venir : image « utilisateur final », sans SSH, avec l'assistant de premier lancement.

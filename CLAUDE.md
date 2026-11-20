@@ -88,6 +88,11 @@ berrycast/
 └── tests/                        # tests unitaires (pytest)
 ```
 
+## Image de développement (tests en conditions réelles)
+- Chaque envoi sur `main` reconstruit l'image `berrycast-dev-<date>-<commit>.img.xz` (pi-gen, GitHub Actions, pré-version « dev » des Releases). Le développeur la flashe avec balenaEtcher et teste.
+- Le dépôt est installé dans `/opt/berrycast` sur le Pi ; utilisateur `pi`, hôte `berrycast.local`, Wi-Fi et mot de passe SSH lus dans `berrycast-wifi.txt` (partition de démarrage).
+- Détails : `image/README.md` et `docs/image-dev.md`. Les commandes de test données au développeur supposent cette image.
+
 ## Règle GitHub (OBLIGATOIRE)
 - **Ne JAMAIS envoyer quoi que ce soit sur GitHub sans validation explicite du développeur** : pas de `git push`, pas de création de tag/release, pas de pull request, pas de commande `gh` qui modifie le dépôt distant.
 - Avant chaque envoi, présente un **récapitulatif** : liste des commits (titre + fichiers modifiés), branche visée, et pose la question : « Je peux envoyer sur GitHub ? (oui/non) ».

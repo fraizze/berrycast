@@ -1,0 +1,111 @@
+# Construit l'image de DÉVELOPPEMENT berrycast-dev-<date>-<commit>.img.xz
+# avec pi-gen (outil officiel Raspberry Pi), puis la publie dans la pré-version
+# « dev » des Releases GitHub (remplacée à chaque nouvelle construction).
+#
+# Déclenchement : à chaque envoi sur main (sauf documentation seule),
+# ou à la main depuis l'onglet Actions (« Run workflow »).
+name: Image de développement
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write # nécessaire pour publier la pré-version « dev »
+
+concurrency:
+  group: image-dev
+  cancel-in-progress: true
+
+env:
+  # pi-gen, branche arm64 (Raspberry Pi OS 64 bits, Trixie), figé sur un commit précis
+  # pour que la construction soit reproductible. À mettre à jour volontairement.
+  PI_GEN_REPO: https://github.com/RPi-Distro/pi-gen.git
+  PI_GEN_REF: c0d2c9f2cffc08bc56850b0a3eb23178f4226e8a
+
+jobs:
+  build:
+    # Machine ARM 64 bits : construction native, sans émulation (beaucoup plus rapide)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Libérer de l'espace disque
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
+      - name: Récupérer pi-gen
+        run: |
+          git clone --quiet "$PI_GEN_REPO" pi-gen
+          git -C pi-gen checkout --quiet --detach "$PI_GEN_REF"
+          git -C pi-gen log -1 --format='pi-gen %h (%cd) %s'
+
+      - name: Préparer la construction
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          SHORT=${GITHUB_SHA::7}
+          echo "IMG_DATE=$DATE" >> "$GITHUB_ENV"
+          echo "SHORT_SHA=$SHORT" >> "$GITHUB_ENV"
+
+          # Notre étape, après stage2 (Raspberry Pi OS Lite) ; pas d'image « Lite » seule
+          cp -r image/pi-gen/stage-berrycast pi-gen/
+          touch pi-gen/stage2/SKIP_IMAGES
+          chmod +x pi-gen/stage-berrycast/prerun.sh pi-gen/stage-berrycast/00-berrycast/01-run.sh
+
+          # Copie du dépôt BerryCast qui sera installée dans /opt/berrycast
+          DEST=pi-gen/stage-berrycast/00-berrycast/files/berrycast
+          mkdir -p "$DEST"
+          rsync -a --exclude .git --exclude pi-gen --exclude .venv --exclude __pycache__ \
+            --exclude .pytest_cache --exclude .ruff_cache ./ "$DEST/"
+          printf 'commit=%s\ndate=%s\n' "$SHORT" "$DATE" > "$DEST/BUILD_INFO"
+
+          # Configuration + mot de passe aléatoire (verrouillé ensuite dans l'image)
+          PASS=$(openssl rand -hex 24)
+          echo "::add-mask::$PASS"
+          cp image/pi-gen/config pi-gen/config
+          echo "IMG_DATE=$DATE" >> pi-gen/config
+          echo "FIRST_USER_PASS=$PASS" >> pi-gen/config
+
+      - name: Construire l'image (pi-gen dans Docker)
+        working-directory: pi-gen
+        run: ./build-docker.sh -c config
+
+      - name: Renommer et calculer le SHA-256
+        run: |
+          SRC=$(ls pi-gen/deploy/*.img.xz | head -n 1)
+          NAME="berrycast-dev-${IMG_DATE}-${SHORT_SHA}.img.xz"
+          mkdir -p out
+          mv "$SRC" "out/$NAME"
+          (cd out && sha256sum "$NAME" > "$NAME.sha256")
+          echo "IMG_FILE=out/$NAME" >> "$GITHUB_ENV"
+          ls -lh out
+
+      - name: Garder les journaux de construction
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journaux-pi-gen
+          path: pi-gen/deploy/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Publier la pré-version « dev »
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete dev --cleanup-tag --yes || true
+          gh release create dev "$IMG_FILE" "$IMG_FILE.sha256" \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "BerryCast dev — ${IMG_DATE} (${SHORT_SHA})" \
+            --notes "Image de DÉVELOPPEMENT, construite automatiquement depuis le commit ${GITHUB_SHA}.
+
+          Procédure : voir docs/image-dev.md (flasher avec balenaEtcher, remplir berrycast-wifi.txt, se connecter en SSH).
+
+          SHA-256 : voir le fichier .sha256 joint."

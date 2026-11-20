@@ -20,6 +20,10 @@ htmlcov/
 *.img.xz
 *.zip
 
+# Résultats bruts des diagnostics sur le Pi (peuvent contenir des infos locales)
+spikes/**/check-result*.txt
+spikes/**/*.log
+
 # Réglages locaux de Claude Code (propres à chaque machine)
 .claude/settings.local.json
 

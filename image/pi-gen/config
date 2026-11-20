@@ -1,0 +1,29 @@
+# Configuration pi-gen de l'image de DÉVELOPPEMENT BerryCast.
+# Lue par build.sh de pi-gen (branche arm64 = Raspberry Pi OS 64 bits).
+# GitHub Actions ajoute à la fin : IMG_DATE et FIRST_USER_PASS (voir plus bas).
+
+IMG_NAME=berrycast-dev
+RELEASE=trixie
+DEPLOY_COMPRESSION=xz
+COMPRESSION_LEVEL=6
+
+TARGET_HOSTNAME=berrycast
+LOCALE_DEFAULT=fr_FR.UTF-8
+KEYBOARD_KEYMAP=fr
+KEYBOARD_LAYOUT="French"
+TIMEZONE_DEFAULT=Europe/Paris
+
+# Utilisateur « pi ». pi-gen exige un mot de passe pour désactiver l'assistant de
+# renommage au premier démarrage : GitHub Actions en génère un ALÉATOIRE (jamais
+# publié), puis stage-berrycast VERROUILLE ce mot de passe. Le vrai mot de passe
+# est choisi par le développeur dans berrycast-wifi.txt.
+FIRST_USER_NAME=pi
+DISABLE_FIRST_BOOT_USER_RENAME=1
+ENABLE_SSH=1
+
+# Pas de pays Wi-Fi à la construction : il est lu dans berrycast-wifi.txt.
+# cloud-init désactivé : c'est berrycast-wifi.txt qui configure le Wi-Fi.
+ENABLE_CLOUD_INIT=0
+
+# Raspberry Pi OS Lite (stages 0 à 2) + notre étape à nous.
+STAGE_LIST="stage0 stage1 stage2 stage-berrycast"
