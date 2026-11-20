@@ -97,7 +97,7 @@ def parse(text: str) -> dict[str, str]:
     return values
 
 
-def _is_valid_psk(psk: str) -> bool:
+def is_valid_psk(psk: str) -> bool:
     """Mot de passe WPA : 8 à 63 caractères ASCII imprimables, ou 64 chiffres hexadécimaux."""
     if len(psk) == 64 and all(c in string.hexdigits for c in psk):
         return True
@@ -122,7 +122,7 @@ def validate(values: dict[str, str]) -> DevSettings:
     if ssid:
         if len(ssid.encode("utf-8")) > 32:
             s.errors.append("nom du Wi-Fi trop long (32 octets maximum)")
-        elif psk and not _is_valid_psk(psk):
+        elif psk and not is_valid_psk(psk):
             s.errors.append("mot de passe Wi-Fi invalide (8 à 63 caractères, sans accent)")
         else:
             s.ssid = ssid

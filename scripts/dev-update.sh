@@ -5,9 +5,9 @@
 #   sudo bash dev-update.sh /tmp/bc      # /tmp/bc = copie du dépôt (archive décompressée)
 #
 # Ce que fait le script (mêmes étapes que la construction de l'image) :
-# - remplace /opt/berrycast par la nouvelle version du code ;
 # - installe les paquets manquants (s'il y a Internet) ;
-# - met à jour les services systemd, le portail captif et la police console ;
+# - remplace /opt/berrycast par la nouvelle version du code ;
+# - met à jour les services systemd, les droits polkit et les groupes ;
 # - redémarre l'écran HDMI.
 # Il ne touche PAS au Wi-Fi ni à berrycast-wifi.txt : la connexion SSH reste ouverte.
 
@@ -31,7 +31,9 @@ for p in ${PKGS}; do
 done
 if [ -n "${MISSING}" ]; then
 	echo "   à installer :${MISSING}"
-	apt-get update -qq && apt-get install -y -qq ${MISSING}
+	echo "   (cela peut prendre plusieurs minutes, la progression s'affiche ci-dessous)"
+	apt-get update
+	apt-get install -y ${MISSING}
 else
 	echo "   déjà installés"
 fi
@@ -42,22 +44,21 @@ BUILD_INFO=""
 rsync -a --delete --chown=0:0 --exclude .git --exclude .venv --exclude __pycache__ \
 	"${SRC}/" /opt/berrycast/
 chmod -R u=rwX,go=rX /opt/berrycast
-if [ -f "${SRC}/BUILD_INFO" ]; then
-	:
-elif [ -n "${BUILD_INFO}" ]; then
-	printf '%s\n' "${BUILD_INFO}" | sed 's/^commit=\(.*\)$/commit=\1+dev/' > /opt/berrycast/BUILD_INFO
+if [ ! -f "${SRC}/BUILD_INFO" ] && [ -n "${BUILD_INFO}" ]; then
+	printf '%s\n' "${BUILD_INFO}" | sed 's/^commit=\([^+]*\).*$/commit=\1+dev/' \
+		> /opt/berrycast/BUILD_INFO
 fi
 
-echo "3/5 Services systemd et portail captif"
+echo "3/5 Services systemd, droits polkit, groupes"
 install -m 644 "${SRC}"/system/dev/*.service /etc/systemd/system/
-install -d -m 755 /etc/NetworkManager/dnsmasq-shared.d
-install -m 644 "${SRC}/system/networkmanager/berrycast-captive.conf" /etc/NetworkManager/dnsmasq-shared.d/
+install -d -m 755 /etc/polkit-1/rules.d
+install -m 644 "${SRC}/system/polkit/50-berrycast.rules" /etc/polkit-1/rules.d/
+usermod -a -G video,render berrycast
 systemctl daemon-reload
 
-echo "4/5 Police console avec « ▀ » (QR code)"
-PYTHONPATH=/opt/berrycast python3 -m berrycast.display.fontpatch \
-	/usr/share/consolefonts/Lat15-TerminusBold32x16.psf.gz \
-	/usr/share/berrycast/fonts/berrycast-32x16.psf
+echo "4/5 Nettoyage des essais précédents"
+rm -f /etc/NetworkManager/dnsmasq-shared.d/berrycast-captive.conf
+rm -rf /usr/share/berrycast/fonts
 
 echo "5/5 Redémarrage de l'écran HDMI"
 systemctl restart berrycast-devscreen.service

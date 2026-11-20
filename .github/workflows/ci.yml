@@ -24,7 +24,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Installer les outils
-        run: pip install pytest ruff qrcode
+        run: pip install pytest ruff
 
       - name: Linter (ruff)
         run: ruff check .

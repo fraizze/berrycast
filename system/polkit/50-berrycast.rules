@@ -1,0 +1,12 @@
+// BerryCast : droits minimaux de l'utilisateur de service « berrycast » (sans root).
+// Installé dans /etc/polkit-1/rules.d/.
+polkit.addRule(function (action, subject) {
+    if (subject.user !== "berrycast") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    // Relancer une recherche des Wi-Fi (bouton « Actualiser » de la configuration)
+    if (action.id === "org.freedesktop.NetworkManager.wifi.scan") {
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NOT_HANDLED;
+});

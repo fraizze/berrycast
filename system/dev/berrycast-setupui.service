@@ -1,0 +1,39 @@
+# Configuration de BerryCast sur la TV, avec un clavier USB branché au Pi (pygame).
+# Étape 1 du développement : lancé à la main (« sudo systemctl start berrycast-setupui »),
+# il ne modifie encore rien (récapitulatif à la fin).
+#
+# Droits : utilisateur « berrycast » (pas root).
+# - écran : groupes video et render (/dev/dri), pilote SDL « kmsdrm » ;
+# - clavier : tty1 donné par systemd comme entrée standard (StandardInput=tty) ; c'est
+#   aussi ce qui autorise à changer la disposition du clavier de la console (loadkeys).
+
+[Unit]
+Description=BerryCast : configuration sur la TV (clavier)
+# L'écran texte « BerryCast dev » s'arrête pendant la configuration…
+Conflicts=berrycast-devscreen.service getty@tty1.service
+After=NetworkManager.service
+
+[Service]
+Type=simple
+User=berrycast
+Group=berrycast
+SupplementaryGroups=video render
+WorkingDirectory=/opt/berrycast
+Environment=PYTHONPATH=/opt/berrycast
+Environment=SDL_VIDEODRIVER=kmsdrm
+Environment=SDL_AUDIODRIVER=dummy
+Environment=XDG_RUNTIME_DIR=/run/berrycast-ui
+RuntimeDirectory=berrycast-ui
+
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+
+ExecStart=/usr/bin/python3 -m berrycast.setup.ui
+# … et revient à la fin.
+ExecStopPost=+/bin/systemctl start --no-block berrycast-devscreen.service
+
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes

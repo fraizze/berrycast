@@ -1,5 +1,8 @@
 python3-dbus python3-gi
-python3-qrcode
-dnsmasq-base
 iw
 git
+python3-pygame
+libegl1 libgles2 libgbm1 libgl1-mesa-dri
+fonts-dejavu-core
+iso-codes
+kbd

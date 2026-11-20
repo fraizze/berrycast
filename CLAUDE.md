@@ -40,16 +40,17 @@ Le développeur teste sur un **Raspberry Pi 3 Model B** + un **PC Windows 11** +
 
 ## Interface (règle de design : SIMPLE)
 - **Fond noir, texte blanc**, gros caractères, centré. Pas de logo, pas d'animation, pas de framework graphique.
-- Implémentation préférée : écrire directement sur la **console tty1** avec une grande police console (ex. Terminus via `setfont`). Si ce n'est vraiment pas possible proprement, alternative : `pygame` en mode `kmsdrm`. Demander avant de changer d'approche.
+- Écrans d'information simples (accueil, état) : **console tty1** avec une grande police console (Terminus via `setfont`).
+- **Interface de configuration : graphique, `pygame` en mode `kmsdrm`** (validé par le développeur le 20/11/2026) : polices lisses, champs arrondis, toujours fond noir / texte blanc, sobre. Pas d'autre framework graphique. Demander avant de changer d'approche.
 - Langues : **français par défaut**, anglais disponible (fichiers de traduction simples).
 - La page web de réglage : HTML/CSS/JS **sans framework**, fond noir texte blanc aussi, utilisable sur téléphone.
 
 ## Fonctionnalités demandées
 1. **Nom personnalisable** : un seul nom (ex. « TV Salon ») utilisé partout : nom affiché dans Windows + K, dans la liste AirPlay de l'iPhone, nom d'hôte (`tv-salon.local`), écran d'accueil.
-2. **Premier lancement** : une petite interface de configuration.
-   - L'écran HDMI affiche : « Bienvenue », un Wi-Fi temporaire à rejoindre (`BerryCast-Setup-XXXX` + mot de passe affiché), l'adresse de la page de réglage, et un **code de vérification à 6 chiffres**.
-   - Sur le téléphone, la page demande d'abord le **code de vérification** (preuve qu'on voit l'écran), puis : nom de l'appareil, réseau Wi-Fi de la maison (liste des réseaux détectés + mot de passe), langue, **pays** (liste déroulante de tous les pays du monde, codes ISO 3166-1 de `berrycast/countries.py` ; vide/inconnu = réglage Wi-Fi international « 00 » + avertissement, jamais bloquant).
-   - Ensuite le Pi rejoint le Wi-Fi de la maison et passe en mode normal.
+2. **Premier lancement** : interface de configuration **sur la TV, avec un clavier USB branché au Pi** (décision du 20/11/2026 ; le mode « Wi-Fi temporaire + page sur le téléphone » a été abandonné et retiré).
+   - Champs, dans l'ordre : **disposition du clavier** (appliquée tout de suite, ex. suisse romand QWERTZ), nom de l'appareil, **Wi-Fi** (liste des réseaux détectés + « Actualiser » + saisie manuelle), mot de passe du Wi-Fi, **pays** (liste de tous les pays du monde, codes ISO 3166-1 de `berrycast/countries.py`, pays détecté en premier si possible ; vide/inconnu = réglage Wi-Fi international « 00 » + avertissement, jamais bloquant), mot de passe du compte `pi` avec confirmation (image de développement uniquement).
+   - Ensuite le Pi se connecte, la TV affiche le résultat et passe à l'écran normal ; en cas d'échec, retour au formulaire avec le message d'erreur.
+   - Secours avancé : le fichier `berrycast-wifi.txt` sur la partition de démarrage (documenté, pour les cas sans clavier).
 3. **Écran d'accueil (mode normal)** sur HDMI, fond noir texte blanc : nom de l'appareil, « Prêt à recevoir », comment se connecter (Windows + K / Recopie de l'écran), adresse de la page de réglage.
 4. **Code de vérification à la connexion** :
    - Miracast : Windows demande un **code PIN** → le PIN est **affiché en grand sur l'écran HDMI** au moment de la connexion.
@@ -75,7 +76,7 @@ berrycast/
 ├── berrycast/                    # code Python (paquet)
 │   ├── config.py                 # lecture/écriture /etc/berrycast/config.toml
 │   ├── display/                  # écran HDMI tty1 (fond noir, texte blanc)
-│   ├── setup/                    # mode premier lancement (AP temporaire + serveur web)
+│   ├── setup/                    # premier lancement : interface pygame sur la TV (clavier)
 │   ├── web/                      # page de réglages (HTML/CSS/JS sans framework)
 │   ├── airplay/                  # pilotage d'UxPlay
 │   ├── miracast/                 # P2P, RTSP sink, pipeline GStreamer

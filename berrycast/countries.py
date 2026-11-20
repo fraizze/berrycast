@@ -46,6 +46,50 @@ ISO_3166_ALPHA2 = frozenset(
 )
 
 
+ISO_CODES_JSON = "/usr/share/iso-codes/json/iso_3166-1.json"  # paquet Debian iso-codes
+LOCALE_DIR = "/usr/share/locale"
+
+
+def country_names(language: str = "fr", json_path: str = ISO_CODES_JSON,
+                  locale_dir: str = LOCALE_DIR) -> dict[str, str]:
+    """Nom de chaque pays dans la langue demandée (paquet Debian « iso-codes » + gettext).
+
+    Sans le paquet (sur un PC de développement), le nom est simplement le code.
+    """
+    import gettext
+    import json
+
+    names = {code: code for code in ISO_3166_ALPHA2}
+    try:
+        with open(json_path, encoding="utf-8") as f:
+            entries = json.load(f)["3166-1"]
+    except (OSError, ValueError, KeyError):
+        return names
+    tr = gettext.translation("iso_3166-1", locale_dir, languages=[language], fallback=True)
+    for entry in entries:
+        code = entry.get("alpha_2")
+        if code in names:
+            names[code] = tr.gettext(entry.get("common_name") or entry["name"])
+    return names
+
+
+def _sort_key(name: str) -> str:
+    """Tri alphabétique sans tenir compte des accents (« Égypte » avec les E)."""
+    import unicodedata
+
+    decomposed = unicodedata.normalize("NFKD", name)
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold()
+
+
+def sorted_countries(names: dict[str, str], first: str | None = None) -> list[tuple[str, str]]:
+    """Liste (code, nom) triée par nom ; le pays `first` (détecté) est placé en tête."""
+    items = sorted(names.items(), key=lambda item: _sort_key(item[1]))
+    if first in names:
+        items.remove((first, names[first]))
+        items.insert(0, (first, names[first]))
+    return items
+
+
 def normalize_country(code: str | None) -> str | None:
     """Renvoie le code en majuscules s'il est valide (« fr » -> « FR »), sinon None."""
     if not code:
