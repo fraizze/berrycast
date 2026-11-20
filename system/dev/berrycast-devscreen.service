@@ -1,19 +1,36 @@
 # Image de DÉVELOPPEMENT : écran HDMI « BerryCast dev » (adresse IP, état du Wi-Fi)
 # sur la console tty1, fond noir, texte blanc.
+#
+# Accès à l'écran : c'est systemd (root) qui ouvre /dev/tty1 et le donne au programme
+# comme sortie standard (StandardOutput=tty + TTYPath), AVANT de passer à l'utilisateur
+# « berrycast ». Le programme n'a donc besoin d'aucun droit sur /dev/tty1 (ni root, ni
+# groupe tty) : il écrit simplement sur sa sortie standard. C'est la méthode prévue par
+# systemd pour les services qui affichent sur une console, et elle ne dépend pas des
+# permissions de /dev/tty1 (qui peuvent changer selon getty, login, udev…).
 
 [Unit]
 Description=BerryCast dev : écran HDMI
 After=systemd-user-sessions.service
-Conflicts=getty@tty1.service
+# tty1 nous est réservé : pas d'invite de connexion dessus (getty@tty1 est aussi masqué)
+Conflicts=getty@tty1.service autovt@tty1.service
 
 [Service]
 Type=simple
 User=berrycast
 Group=berrycast
-SupplementaryGroups=tty
 WorkingDirectory=/opt/berrycast
 Environment=PYTHONPATH=/opt/berrycast
 Environment=PYTHONUNBUFFERED=1
+
+# Écran : sortie standard = /dev/tty1 (ouvert par systemd) ; erreurs = journal
+TTYPath=/dev/tty1
+StandardInput=null
+StandardOutput=tty
+StandardError=journal
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+
 # Grande police console (Terminus 32x16) ; « + » = cette commande seule tourne en root,
 # « - » = on continue même si elle échoue.
 ExecStartPre=-+/usr/bin/setfont -C /dev/tty1 /usr/share/consolefonts/Lat15-TerminusBold32x16.psf.gz
@@ -21,7 +38,7 @@ ExecStart=/usr/bin/python3 -m berrycast.dev.screen
 Restart=always
 RestartSec=2
 
-# Durcissement : l'écran n'a besoin de rien d'autre que lire l'état et écrire sur tty1
+# Durcissement : l'écran n'a besoin que de lire l'état du système et d'écrire sur sa sortie
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes

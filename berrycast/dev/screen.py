@@ -3,8 +3,12 @@
 Fond noir, texte blanc, centré, écrit directement sur la console tty1 (pas de
 serveur graphique). Version minimale en attendant le vrai écran (étape 05).
 
-Lancé par berrycast-devscreen.service sous l'utilisateur « berrycast »
-(groupe tty, qui a le droit d'écrire sur /dev/tty1). Pas besoin de root.
+Lancé par berrycast-devscreen.service sous l'utilisateur « berrycast », sans root :
+systemd ouvre lui-même /dev/tty1 et le donne au programme comme SORTIE STANDARD
+(StandardOutput=tty). Le programme écrit donc simplement sur sa sortie standard.
+
+Pour un essai à la main, la variable BERRYCAST_TTY permet d'écrire ailleurs
+(sinon, lancé dans une session SSH, l'écran s'affiche dans le terminal SSH).
 """
 
 from __future__ import annotations
@@ -22,7 +26,7 @@ from pathlib import Path
 from berrycast.countries import WORLD_REGDOMAIN
 from berrycast.dev.nm import split_terse
 
-TTY = os.environ.get("BERRYCAST_TTY", "/dev/tty1")
+TTY = os.environ.get("BERRYCAST_TTY")  # None = sortie standard (cas normal)
 STATE_FILE = Path(os.environ.get("BERRYCAST_STATE_DIR", "/var/lib/berrycast")) / "devsetup.json"
 BUILD_INFO = Path(os.environ.get("BERRYCAST_HOME", "/opt/berrycast")) / "BUILD_INFO"
 REFRESH_SECONDS = 3
@@ -177,22 +181,46 @@ def layout(lines: list[str], cols: int, rows: int) -> str:
     return "".join(out)
 
 
+def open_output() -> int:
+    """Descripteur où écrire : la sortie standard (tty1 donné par systemd), ou BERRYCAST_TTY."""
+    if TTY:
+        return os.open(TTY, os.O_WRONLY | os.O_NOCTTY)
+    return sys.stdout.fileno()
+
+
+def write_all(fd: int, data: bytes) -> None:
+    """Écrit tout (os.write peut n'écrire qu'une partie sur un terminal)."""
+    view = memoryview(data)
+    while view:
+        written = os.write(fd, view)
+        view = view[written:]
+
+
 def main() -> int:
-    last_text, last_full = None, 0.0
+    target = TTY or "la sortie standard"
+    if not TTY and not os.isatty(sys.stdout.fileno()):
+        print(
+            "Écran : la sortie standard n'est pas un terminal "
+            "(vérifier StandardOutput=tty et TTYPath= dans le service).",
+            file=sys.stderr,
+        )
+    fd = open_output()
+    last_text, last_full, failures = None, 0.0, 0
     while True:
         try:
-            fd = os.open(TTY, os.O_WRONLY | os.O_NOCTTY)
-            try:
-                cols, rows = terminal_size(fd)
-                lines = render_lines(gather())
-                now = time.monotonic()
-                if lines != last_text or now - last_full > FULL_REDRAW_SECONDS:
-                    os.write(fd, layout(lines, cols, rows).encode("utf-8"))
-                    last_text, last_full = lines, now
-            finally:
-                os.close(fd)
+            cols, rows = terminal_size(fd)
+            lines = render_lines(gather())
+            now = time.monotonic()
+            if lines != last_text or now - last_full > FULL_REDRAW_SECONDS:
+                write_all(fd, layout(lines, cols, rows).encode("utf-8"))
+                last_text, last_full = lines, now
+            failures = 0
         except OSError as exc:
-            print(f"Écran : erreur d'écriture sur {TTY} : {exc}", file=sys.stderr)
+            failures += 1
+            print(f"Écran : erreur d'écriture sur {target} : {exc}", file=sys.stderr)
+            if failures >= 3:
+                # On quitte : systemd relance le service et rouvre proprement tty1.
+                return 1
         time.sleep(REFRESH_SECONDS)
 
 

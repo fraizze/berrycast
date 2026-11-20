@@ -1,7 +1,27 @@
 """Tests de l'écran de développement et de la lecture de nmcli."""
 
+from berrycast.dev import screen
 from berrycast.dev.nm import split_terse
 from berrycast.dev.screen import Info, layout, render_lines
+
+
+def test_write_all_handles_partial_writes(monkeypatch):
+    chunks = []
+
+    def short_write(fd, data):
+        piece = bytes(data[:3])  # le terminal n'accepte que 3 octets à la fois
+        chunks.append(piece)
+        return len(piece)
+
+    monkeypatch.setattr(screen.os, "write", short_write)
+    screen.write_all(1, "écran OK".encode())
+    assert b"".join(chunks) == "écran OK".encode()
+
+
+def test_output_is_stdout_by_default(monkeypatch):
+    monkeypatch.setattr(screen, "TTY", None)
+    monkeypatch.setattr(screen.sys.stdout, "fileno", lambda: 1)
+    assert screen.open_output() == 1
 
 
 def test_split_terse_with_escapes():

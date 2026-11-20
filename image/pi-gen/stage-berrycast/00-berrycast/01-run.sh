@@ -30,7 +30,9 @@ if ! id -u berrycast >/dev/null 2>&1; then
 	useradd --system --user-group --no-create-home --home-dir /nonexistent \
 		--shell /usr/sbin/nologin berrycast
 fi
-usermod -a -G tty,video berrycast
+# Pas de groupe tty : c'est systemd qui ouvre l'écran tty1 pour le service (StandardOutput=tty).
+# Groupe video : pour l'affichage vidéo des prochaines étapes (kmssink).
+usermod -a -G video berrycast
 install -d -m 755 /var/lib/berrycast
 
 # Aucun mot de passe connu : on verrouille celui (aléatoire) donné à la construction.
