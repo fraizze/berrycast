@@ -35,7 +35,7 @@ Le développeur teste sur un **Raspberry Pi 3 Model B** + un **PC Windows 11** +
 - **Miracast : code maison** (le cœur du projet) : Wi-Fi P2P (Wi-Fi Direct) via **wpa_supplicant (API D-Bus)**, éléments WFD, négociation **RTSP** côté *sink* (messages M1 à M7 + keep-alive + TEARDOWN), réception **RTP / MPEG-TS** → GStreamer.
   - Référence d'inspiration (ancienne, ne marche plus sur les OS récents) : https://github.com/homeworkc/lazycast — on peut s'en inspirer, en respectant sa licence et en le créditant.
 - **Services : systemd** (un service par composant + un orchestrateur).
-- **Licence : GPL-3.0** (compatible avec UxPlay et lazycast).
+- **Licence : GPL-3.0-or-later** (GNU GPL version 3 ou toute version ultérieure ; compatible avec UxPlay et lazycast).
 - **Image flashable** : construite avec l'outil officiel Raspberry Pi (**rpi-image-gen** ou **pi-gen** — vérifier lequel est recommandé actuellement), dans **GitHub Actions**, publiée dans les *Releases*.
 
 ## Interface (règle de design : SIMPLE)
@@ -69,7 +69,7 @@ Le développeur teste sur un **Raspberry Pi 3 Model B** + un **PC Windows 11** +
 ```
 berrycast/
 ├── README.md / README.en.md      # utilisateur final : télécharger, flasher (balenaEtcher), brancher
-├── LICENSE                       # GPL-3.0
+├── LICENSE                       # GPL-3.0-or-later
 ├── CLAUDE.md
 ├── docs/                         # architecture, dépannage, matrice de compatibilité, notes de recherche
 ├── berrycast/                    # code Python (paquet)

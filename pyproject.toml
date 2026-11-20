@@ -3,6 +3,8 @@ name = "berrycast"
 version = "0.0.1"
 description = "Transforme un Raspberry Pi en écran sans fil (Miracast + AirPlay)"
 readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 # Raspberry Pi OS « Trixie » fournit Python 3.13 ; tomllib demande au moins 3.11.
 requires-python = ">=3.11"
 

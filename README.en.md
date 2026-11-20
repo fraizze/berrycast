@@ -53,6 +53,7 @@ Done: your BerryCast shows up in Windows + K and in the iPhone's Screen Mirrorin
 
 ## License
 
-BerryCast is free software, released under the **GPL-3.0** license (see [LICENSE](LICENSE)).
+BerryCast is free software, released under the **GNU GPL version 3 or any later version**
+(`GPL-3.0-or-later`, see [LICENSE](LICENSE)).
 
 Want to help? Read [CONTRIBUTING.md](CONTRIBUTING.md).

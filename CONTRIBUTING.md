@@ -7,7 +7,7 @@ Merci de votre intérêt ! Quelques règles simples :
 - **Python 3** et bibliothèque standard autant que possible. En production, uniquement des paquets
   Debian (`python3-*`), pas de `pip`.
 - **Pas de secrets** dans le dépôt (mots de passe, clés…).
-- Toute contribution est publiée sous licence **GPL-3.0**.
+- Toute contribution est publiée sous licence **GPL-3.0-or-later** (GNU GPL version 3 ou toute version ultérieure).
 
 ## Lancer les tests et le linter
 

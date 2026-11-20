@@ -53,6 +53,7 @@ C'est prêt : votre BerryCast apparaît dans Windows + K et dans la recopie de l
 
 ## Licence
 
-BerryCast est un logiciel libre, distribué sous licence **GPL-3.0** (voir [LICENSE](LICENSE)).
+BerryCast est un logiciel libre, distribué sous licence **GNU GPL version 3 ou toute version ultérieure**
+(`GPL-3.0-or-later`, voir [LICENSE](LICENSE)).
 
 Envie d'aider ? Lisez [CONTRIBUTING.md](CONTRIBUTING.md).
