@@ -1,0 +1,10 @@
+# Déclenche l'application des réglages dès que l'interface de configuration dépose sa
+# demande (fichier privé dans /run/berrycast-setup, effacé aussitôt lu).
+[Unit]
+Description=BerryCast : attente d'une demande de configuration
+
+[Path]
+PathExists=/run/berrycast-setup/request.json
+
+[Install]
+WantedBy=multi-user.target

@@ -11,7 +11,9 @@ Construite par GitHub Actions ([`.github/workflows/image-dev.yml`](../.github/wo
   (branche `arm64`, Debian 13 « Trixie »), lancé dans Docker sur une machine ARM 64 bits de GitHub.
 - Base : stages 0 à 2 de pi-gen = **Raspberry Pi OS Lite 64 bits**.
 - Notre ajout : [`pi-gen/stage-berrycast/`](pi-gen/stage-berrycast/) (code du dépôt dans `/opt/berrycast`,
-  services `system/dev/`, fichier `berrycast-wifi.txt` sur la partition de démarrage).
+  services `system/dev/` dont la configuration au clavier sur la TV, fichier de secours
+  `berrycast-wifi.txt` sur la partition de démarrage). Paquets : `00-packages` (avec recommandés)
+  et `00-packages-nr` (sans les paquets recommandés, pour garder l'image légère).
 - Réglages : [`pi-gen/config`](pi-gen/config) (utilisateur `pi`, nom d'hôte `berrycast`, SSH activé,
   aucun mot de passe connu).
 

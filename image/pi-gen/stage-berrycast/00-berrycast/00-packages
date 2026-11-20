@@ -1,8 +1,5 @@
 python3-dbus python3-gi
 iw
 git
-python3-pygame
-libegl1 libgles2 libgbm1 libgl1-mesa-dri
-fonts-dejavu-core
 iso-codes
 kbd

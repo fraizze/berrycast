@@ -5,25 +5,19 @@
   choisie (suisse, français…). systemd donne tty1 au programme (StandardInput=tty).
 - Style : fond noir, texte blanc, sobre ; polices DejaVu (lisses), champs arrondis.
 
-Étape 1 du développement : le formulaire complet, sans encore appliquer les réglages
-(un écran récapitulatif s'affiche à la fin).
-
-Lancement (sur le Pi, voir la procédure de test) : python3 -m berrycast.setup.ui
+Affichage OPTIONNEL (BERRYCAST_SETUP_DISPLAY=graphique) : l'affichage par défaut est
+le texte (console_ui), qui fonctionne partout. Lancement : berrycast.setup.main.
 """
 
 from __future__ import annotations
 
 import os
-import select
-import sys
 import time
 from pathlib import Path
 
-from berrycast import countries
 from berrycast.i18n import t
-from berrycast.setup import keyboards, wifi
-from berrycast.setup.form import APPLY_KEYBOARD, QUIT, REFRESH, SUBMITTED, Row, SetupForm
-from berrycast.setup.keys import KeyDecoder
+from berrycast.setup.form import Row
+from berrycast.setup.session import Session
 
 BG = (0, 0, 0)
 FG = (255, 255, 255)
@@ -77,15 +71,13 @@ def fit(font, text: str, max_width: int) -> str:
 
 
 class SetupUI:
-    def __init__(self, pygame, screen, form: SetupForm):
+    def __init__(self, pygame, screen, session: Session):
         self.pg = pygame
         self.screen = screen
-        self.form = form
+        self.session = session
+        self.form = session.form
         self.w, self.h = screen.get_size()
         self.theme = Theme(pygame, self.h)
-        self.mode = "form"  # "form" ou "summary"
-        self.notice = ""
-        self.notice_until = 0.0
 
     # ---- Dessin -------------------------------------------------------------
 
@@ -112,16 +104,39 @@ class SetupUI:
 
     def draw(self) -> None:
         self.screen.fill(BG)
-        if self.mode == "summary":
-            self.draw_summary()
+        session = self.session
+        if session.state == "applying":
+            ssid = self.form.result()["ssid"]
+            self.draw_message(t("setup_applying", ssid=ssid), [t("setup_applying_hint")])
+        elif session.state == "done":
+            ip = session.result.get("ip") or "?"
+            self.draw_message(t("setup_done_title"), [
+                t("setup_done_wifi", ssid=self.form.result()["ssid"]),
+                t("setup_done_ip", ip=ip),
+                t("setup_done_ssh", ip=ip),
+                "",
+                t("setup_done_keys"),
+            ], title_color=OK)
         else:
             self.draw_form()
             if self.form.dropdown:
                 self.draw_dropdown()
-        if self.notice and time.monotonic() < self.notice_until:
-            self.text(self.theme.small, self.notice, OK, self.w // 2,
-                      self.h - round(100 * self.theme.s), center=True)
+            footer = session.busy or (session.notice if session.notice_visible() else "")
+            if footer:
+                self.text(self.theme.small, footer, OK, self.w // 2,
+                          self.h - round(100 * self.theme.s), center=True)
         self.pg.display.flip()
+
+    def draw_message(self, title: str, lines: list[str], title_color=FG) -> None:
+        th = self.theme
+        total = th.title.get_linesize() + round(30 * th.s) + len(lines) * th.row_h
+        y = (self.h - total) // 2
+        self.text(th.title, title, title_color, self.w // 2, y, center=True)
+        y += th.title.get_linesize() + round(30 * th.s)
+        for line in lines:
+            self.text(th.value, line, MUTED if line == lines[-1] else FG, self.w // 2, y,
+                      center=True)
+            y += th.row_h
 
     def draw_header(self, title, subtitle) -> int:
         th = self.theme
@@ -134,6 +149,10 @@ class SetupUI:
     def draw_form(self) -> None:
         th = self.theme
         top = self.draw_header(t("setup_title"), t("setup_subtitle"))
+        if self.session.error:
+            self.text(th.label, self.session.error, ERROR, self.w // 2, top - round(10 * th.s),
+                      center=True)
+            top += th.label.get_linesize() + round(10 * th.s)
         left, width = self.content_rect()
         label_w = round(width * 0.36)
         rows = self.form.rows
@@ -243,137 +262,3 @@ class SetupUI:
             y += item_h
         self.text(th.small, t("setup_help_dropdown"), MUTED, self.w // 2,
                   panel.bottom + round(16 * th.s), center=True)
-
-    def draw_summary(self) -> None:
-        th = self.theme
-        top = self.draw_header(t("setup_summary_title"), t("setup_summary_next"))
-        left, width = self.content_rect()
-        res = self.form.result()
-        names = dict(self.form.rows_by_key["country"].options)
-        lines = [
-            (t("setup_keyboard"), res["keyboard"].label),
-            (t("setup_name"), res["device_name"]),
-            (t("setup_wifi"), res["ssid"]),
-            (t("setup_wifi_password"), "•" * len(res["psk"]) if res["psk"] else "—"),
-            (t("setup_country"), names.get(res["country"], t("setup_country_none"))),
-            (t("setup_pi_password"), "•" * len(res["pi_password"])),
-        ]
-        y = top
-        for label, value in lines:
-            self.text(th.label, label, MUTED, left, y)
-            self.text(th.value, fit(th.value, value, round(width * 0.6)), FG,
-                      left + round(width * 0.38), y)
-            y += th.row_h
-        self.text(th.small, t("setup_summary_keys"), MUTED, self.w // 2,
-                  self.h - round(60 * th.s), center=True)
-
-    # ---- Actions ----------------------------------------------------------------
-
-    def notify(self, message: str, seconds: float = 4) -> None:
-        self.notice = message
-        self.notice_until = time.monotonic() + seconds
-
-    def apply_keyboard(self) -> None:
-        layout = keyboards.LAYOUTS[int(self.form.rows_by_key["keyboard"].value)]
-        if not keyboards.apply(layout):
-            self.notify(t("setup_keyboard_failed"))
-
-    def refresh(self) -> None:
-        self.notify(t("setup_refreshing"), seconds=30)
-        self.draw()
-        self.form.set_networks(wifi.scan(rescan=True))
-        self.notice_until = 0
-
-    def handle(self, kind: str, value: str) -> bool:
-        """Traite une touche. Renvoie False pour quitter."""
-        if self.mode == "summary":
-            if kind == "key" and value == "esc":
-                self.mode = "form"
-            elif kind == "key" and value in ("enter", "ctrl-c"):
-                return False
-            return True
-        action = self.form.handle(kind, value)
-        if action == APPLY_KEYBOARD:
-            self.apply_keyboard()
-        elif action == REFRESH:
-            self.refresh()
-        elif action == SUBMITTED:
-            self.mode = "summary"
-        elif action == QUIT:
-            return False
-        return True
-
-
-def build_form() -> SetupForm:
-    detected = wifi.detect_country()
-    names = countries.country_names("fr")
-    return SetupForm(
-        networks=wifi.scan(),
-        countries=countries.sorted_countries(names, first=detected),
-        detected_country=detected,
-        keyboard_index=keyboards.default_index(detected),
-    )
-
-
-def main() -> int:
-    os.environ.setdefault("SDL_VIDEODRIVER", "kmsdrm")
-    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
-    import pygame
-
-    pygame.display.init()
-    pygame.font.init()
-    screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-    pygame.mouse.set_visible(False)
-    print(f"Écran {screen.get_size()[0]}x{screen.get_size()[1]}, pilote "
-          f"{pygame.display.get_driver()}", file=sys.stderr)
-
-    form = build_form()
-    ui = SetupUI(pygame, screen, form)
-    ui.apply_keyboard()  # disposition proposée appliquée tout de suite
-
-    fd = sys.stdin.fileno()
-    saved = None
-    if os.isatty(fd):
-        import termios
-        import tty
-
-        saved = termios.tcgetattr(fd)
-        tty.setraw(fd)  # chaque touche arrive tout de suite, sans écho
-    else:
-        print("Clavier : l'entrée standard n'est pas un terminal "
-              "(lancer avec StandardInput=tty).", file=sys.stderr)
-
-    decoder = KeyDecoder()
-    running = True
-    last_tick = None
-    try:
-        while running:
-            ready, _, _ = select.select([fd], [], [], 0.05)
-            data = os.read(fd, 1024) if ready else b""
-            events = decoder.feed(data, final=not ready)
-            for kind, value in events:
-                running = ui.handle(kind, value)
-                if not running:
-                    break
-            pygame.event.pump()
-            # On ne redessine que si nécessaire (touche, clignotement du curseur, message) :
-            # le Pi 3 dessine en logiciel, un écran 1080p complet coûte cher.
-            tick = (int(time.monotonic() * 2), time.monotonic() < ui.notice_until)
-            if events or tick != last_tick:
-                ui.draw()
-                last_tick = tick
-    finally:
-        if saved is not None:
-            import termios
-
-            termios.tcsetattr(fd, termios.TCSADRAIN, saved)
-        pygame.quit()
-    if ui.mode == "summary":
-        res = form.result()
-        print(f"Réglages saisis : clavier={res['keyboard'].label!r}, nom={res['device_name']!r}, "
-              f"wifi={res['ssid']!r}, pays={res['country']!r}", file=sys.stderr)
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

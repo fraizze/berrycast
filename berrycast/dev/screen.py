@@ -122,7 +122,7 @@ def render_lines(info: Info) -> list[str]:
     else:
         lines.append(f"Wi-Fi : {WIFI_STATES.get(info.wifi_state, info.wifi_state)}")
         if info.wifi_state != "connected":
-            lines.append("(réglage : fichier berrycast-wifi.txt sur la carte microSD)")
+            lines.append("(branchez un clavier : la configuration s'ouvre toute seule)")
 
     lines.append("")
     if info.addresses:
@@ -137,11 +137,11 @@ def render_lines(info: Info) -> list[str]:
     warnings = []
     if info.regdomain == WORLD_REGDOMAIN:
         warnings.append("ATTENTION : pays Wi-Fi non défini, réglage international utilisé")
-        warnings.append("(ligne « pays= » de berrycast-wifi.txt, par ex. FR, CH, BE, CA)")
+        warnings.append("(champ « Pays » de la configuration, ou berrycast-wifi.txt)")
     elif info.regdomain:
         lines.append(f"Pays Wi-Fi : {info.regdomain}")
     if info.ssh_password_set is False:
-        warnings.append("ATTENTION : mot de passe SSH non défini (voir berrycast-wifi.txt)")
+        warnings.append("ATTENTION : mot de passe SSH non défini (configuration au clavier)")
     if warnings:
         lines += [""] + warnings
 

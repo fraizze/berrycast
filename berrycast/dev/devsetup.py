@@ -122,11 +122,20 @@ def ssh_password_is_set() -> bool:
 
 
 def apply_wifi(ssid: str, psk: str | None) -> str:
+    """Comme connect_wifi, mais renvoie seulement un message (berrycast-wifi.txt)."""
+    ok, _ = connect_wifi(ssid, psk)
+    if ok:
+        return f"Wi-Fi « {ssid} » : connecté"
+    return f"Wi-Fi « {ssid} » : enregistré, pas encore joignable (nouvel essai automatique)"
+
+
+def connect_wifi(ssid: str, psk: str | None, wait: int = 30) -> tuple[bool, str]:
     """Crée (ou remplace) la connexion Wi-Fi « berrycast-wifi » et tente de s'y connecter.
 
+    Renvoie (connecté ?, message d'erreur de NetworkManager).
     Remarque : nmcli reçoit le mot de passe Wi-Fi en argument. C'est visible très
-    brièvement dans la liste des processus du Pi (par root, au démarrage) :
-    acceptable pour une image de développement.
+    brièvement dans la liste des processus du Pi (par root) : acceptable pour une
+    image de développement.
     """
     run(["nmcli", "connection", "delete", CONNECTION_NAME], check=False)
     cmd = [
@@ -142,10 +151,9 @@ def apply_wifi(ssid: str, psk: str | None) -> str:
     if psk:
         cmd += ["wifi-sec.key-mgmt", "wpa-psk", "wifi-sec.psk", psk]
     run(cmd)
-    result = run(["nmcli", "--wait", "30", "connection", "up", CONNECTION_NAME], check=False)
-    if result.returncode == 0:
-        return f"Wi-Fi « {ssid} » : connecté"
-    return f"Wi-Fi « {ssid} » : enregistré, pas encore joignable (nouvel essai automatique)"
+    result = run(["nmcli", "--wait", str(wait), "connection", "up", CONNECTION_NAME],
+                 check=False)
+    return result.returncode == 0, (result.stderr or result.stdout).strip()
 
 
 def write_boot_file(path: Path, content: str) -> None:

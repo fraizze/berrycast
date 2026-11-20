@@ -24,16 +24,21 @@ if [ ! -f "${SRC}/berrycast/__init__.py" ]; then
 fi
 
 echo "1/5 Paquets nécessaires"
-PKGS=$(sed -e 's/#.*//' "${SRC}/image/pi-gen/stage-berrycast/00-berrycast/00-packages" | xargs)
-MISSING=""
-for p in ${PKGS}; do
-	dpkg-query -W -f '${Status}' "$p" 2>/dev/null | grep -q "install ok installed" || MISSING="${MISSING} $p"
-done
-if [ -n "${MISSING}" ]; then
-	echo "   à installer :${MISSING}"
+missing() {  # paquets de la liste $1 qui ne sont pas encore installés
+	[ -f "$1" ] || return 0
+	for p in $(sed -e 's/#.*//' "$1" | xargs); do
+		dpkg-query -W -f '${Status}' "$p" 2>/dev/null | grep -q "install ok installed" || echo "$p"
+	done
+}
+PKG_DIR="${SRC}/image/pi-gen/stage-berrycast/00-berrycast"
+MISSING=$(missing "${PKG_DIR}/00-packages" | xargs)
+MISSING_NR=$(missing "${PKG_DIR}/00-packages-nr" | xargs)
+if [ -n "${MISSING}${MISSING_NR}" ]; then
+	echo "   à installer : ${MISSING} ${MISSING_NR}"
 	echo "   (cela peut prendre plusieurs minutes, la progression s'affiche ci-dessous)"
 	apt-get update
-	apt-get install -y ${MISSING}
+	[ -z "${MISSING}" ] || apt-get install -y ${MISSING}
+	[ -z "${MISSING_NR}" ] || apt-get install -y --no-install-recommends ${MISSING_NR}
 else
 	echo "   déjà installés"
 fi
@@ -50,11 +55,13 @@ if [ ! -f "${SRC}/BUILD_INFO" ] && [ -n "${BUILD_INFO}" ]; then
 fi
 
 echo "3/5 Services systemd, droits polkit, groupes"
-install -m 644 "${SRC}"/system/dev/*.service /etc/systemd/system/
+install -m 644 "${SRC}"/system/dev/*.service "${SRC}"/system/dev/*.path /etc/systemd/system/
 install -d -m 755 /etc/polkit-1/rules.d
 install -m 644 "${SRC}/system/polkit/50-berrycast.rules" /etc/polkit-1/rules.d/
 usermod -a -G video,render berrycast
 systemctl daemon-reload
+systemctl enable berrycast-setupui.service berrycast-setup-apply.path
+systemctl start berrycast-setup-apply.path
 
 echo "4/5 Nettoyage des essais précédents"
 rm -f /etc/NetworkManager/dnsmasq-shared.d/berrycast-captive.conf

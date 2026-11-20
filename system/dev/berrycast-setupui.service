@@ -1,17 +1,22 @@
-# Configuration de BerryCast sur la TV, avec un clavier USB branché au Pi (pygame).
-# Étape 1 du développement : lancé à la main (« sudo systemctl start berrycast-setupui »),
-# il ne modifie encore rien (récapitulatif à la fin).
+# Configuration de BerryCast sur la TV, avec un clavier USB branché au Pi.
+#
+# Lancée automatiquement au démarrage SI le Wi-Fi ne se connecte pas (premier démarrage,
+# ou Wi-Fi introuvable) : décision prise par berrycast.setup.autostart (ExecCondition).
+# Pour la relancer à la main : sudo systemctl start berrycast-setupui
 #
 # Droits : utilisateur « berrycast » (pas root).
-# - écran : groupes video et render (/dev/dri), pilote SDL « kmsdrm » ;
-# - clavier : tty1 donné par systemd comme entrée standard (StandardInput=tty) ; c'est
-#   aussi ce qui autorise à changer la disposition du clavier de la console (loadkeys).
+# - clavier et écran : tty1 donné par systemd (StandardInput/StandardOutput=tty) ; c'est
+#   aussi ce qui autorise à changer la disposition du clavier de la console (loadkeys) ;
+# - application des réglages : demande déposée dans /run/berrycast-setup, exécutée en root
+#   par berrycast-setup-apply.service (déclenché par berrycast-setup-apply.path).
 
 [Unit]
 Description=BerryCast : configuration sur la TV (clavier)
-# L'écran texte « BerryCast dev » s'arrête pendant la configuration…
-Conflicts=berrycast-devscreen.service getty@tty1.service
-After=NetworkManager.service
+After=berrycast-devsetup.service NetworkManager.service berrycast-setup-apply.path
+Wants=NetworkManager.service berrycast-setup-apply.path
+Conflicts=getty@tty1.service autovt@tty1.service
+StartLimitIntervalSec=300
+StartLimitBurst=4
 
 [Service]
 Type=simple
@@ -20,20 +25,34 @@ Group=berrycast
 SupplementaryGroups=video render
 WorkingDirectory=/opt/berrycast
 Environment=PYTHONPATH=/opt/berrycast
+# « texte » (console, fonctionne partout) ou « graphique » (pygame, à l'essai)
+Environment=BERRYCAST_SETUP_DISPLAY=texte
 Environment=SDL_VIDEODRIVER=kmsdrm
 Environment=SDL_AUDIODRIVER=dummy
-Environment=XDG_RUNTIME_DIR=/run/berrycast-ui
-RuntimeDirectory=berrycast-ui
+Environment=XDG_RUNTIME_DIR=/run/berrycast-setup
+RuntimeDirectory=berrycast-setup
+RuntimeDirectoryMode=0700
 
 TTYPath=/dev/tty1
 StandardInput=tty
-StandardOutput=journal
+StandardOutput=tty
 StandardError=journal
 
-ExecStart=/usr/bin/python3 -m berrycast.setup.ui
-# … et revient à la fin.
+# Faut-il se lancer ? (attend le Wi-Fi 20 s, ou 120 s si un Wi-Fi est déjà enregistré)
+ExecCondition=/usr/bin/python3 -m berrycast.setup.autostart
+TimeoutStartSec=300
+# Oui : on remplace l'écran « BerryCast dev » par la configuration
+ExecStartPre=+/bin/systemctl stop berrycast-devscreen.service
+ExecStartPre=-+/usr/bin/setfont -C /dev/tty1 /usr/share/consolefonts/Lat15-TerminusBold32x16.psf.gz
+ExecStart=/usr/bin/python3 -m berrycast.setup.main
+# À la fin (ou en cas d'arrêt), l'écran « BerryCast dev » revient
 ExecStopPost=+/bin/systemctl start --no-block berrycast-devscreen.service
+Restart=on-failure
+RestartSec=3
 
 NoNewPrivileges=yes
 ProtectHome=yes
 PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

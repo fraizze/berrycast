@@ -1,0 +1,13 @@
+# Applique les réglages du premier lancement (root : mot de passe de pi, pays Wi-Fi,
+# clavier enregistré, connexion Wi-Fi du système). Revérifie toute la demande.
+# Lancé par berrycast-setup-apply.path, jamais directement.
+[Unit]
+Description=BerryCast : application des réglages de configuration
+After=NetworkManager.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/berrycast
+Environment=PYTHONPATH=/opt/berrycast
+ExecStart=/usr/bin/python3 -m berrycast.setup.apply
+TimeoutStartSec=180

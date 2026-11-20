@@ -15,9 +15,7 @@ rsync -a --delete --chown=0:0 "${SRC}/" "${ROOTFS_DIR}/opt/berrycast/"
 chmod -R u=rwX,go=rX "${ROOTFS_DIR}/opt/berrycast"
 
 # 2. Services systemd de l'image de développement
-install -m 644 "${SRC}/system/dev/berrycast-devsetup.service" "${ROOTFS_DIR}/etc/systemd/system/"
-install -m 644 "${SRC}/system/dev/berrycast-devscreen.service" "${ROOTFS_DIR}/etc/systemd/system/"
-install -m 644 "${SRC}/system/dev/berrycast-setupui.service" "${ROOTFS_DIR}/etc/systemd/system/"
+install -m 644 "${SRC}"/system/dev/*.service "${SRC}"/system/dev/*.path 	"${ROOTFS_DIR}/etc/systemd/system/"
 
 # Droits polkit minimaux de l'utilisateur berrycast (ex. : relancer la recherche des Wi-Fi)
 install -d -m 755 "${ROOTFS_DIR}/etc/polkit-1/rules.d"
@@ -41,11 +39,12 @@ usermod -a -G video,render berrycast
 install -d -m 755 /var/lib/berrycast
 
 # Aucun mot de passe connu : on verrouille celui (aléatoire) donné à la construction.
-# Il sera défini par le développeur dans berrycast-wifi.txt.
+# Il sera choisi par le développeur : configuration au clavier sur la TV (ou berrycast-wifi.txt).
 usermod -p '!' ${FIRST_USER_NAME}
 
-# Services : réglages au démarrage + écran HDMI (qui remplace l'invite de connexion sur tty1)
-systemctl enable berrycast-devsetup.service berrycast-devscreen.service
+# Services : berrycast-wifi.txt au démarrage, écran HDMI (à la place de l'invite de
+# connexion sur tty1), configuration au clavier si pas de Wi-Fi, et son application (root)
+systemctl enable berrycast-devsetup.service berrycast-devscreen.service 	berrycast-setupui.service berrycast-setup-apply.path
 systemctl mask getty@tty1.service
 
 # cloud-init complètement désactivé (c'est berrycast-wifi.txt qui configure le Wi-Fi)

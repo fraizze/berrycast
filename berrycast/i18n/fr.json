@@ -34,7 +34,16 @@
   "setup_err_psk": "8 à 63 caractères, sans accent",
   "setup_err_pi_short": "8 caractères minimum, sans « : »",
   "setup_err_pi_match": "Les deux mots de passe sont différents",
-  "setup_summary_title": "Réglages prêts",
-  "setup_summary_next": "Prochaine étape du développement : appliquer ces réglages.",
-  "setup_summary_keys": "Entrée : terminer    Échap : modifier"
+  "setup_applying": "Connexion au Wi-Fi « {ssid} »…",
+  "setup_applying_hint": "Cela peut prendre jusqu'à une minute.",
+  "setup_done_title": "C'est prêt !",
+  "setup_done_wifi": "Connecté au Wi-Fi « {ssid} »",
+  "setup_done_ip": "Adresse IP : {ip}",
+  "setup_done_ssh": "SSH : ssh pi@berrycast.local  (ou ssh pi@{ip})",
+  "setup_done_keys": "Entrée : continuer",
+  "setup_err_wrong_password": "Connexion refusée par « {ssid} » : vérifiez le mot de passe du Wi-Fi.",
+  "setup_err_not_found": "Wi-Fi « {ssid} » introuvable : vérifiez le nom ou actualisez la liste.",
+  "setup_err_timeout": "Le système n'a pas répondu à temps. Réessayez.",
+  "setup_err_invalid": "Réglages refusés : vérifiez les champs.",
+  "setup_err_failed": "Connexion à « {ssid} » impossible. Réessayez."
 }

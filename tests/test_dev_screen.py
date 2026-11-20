@@ -57,7 +57,7 @@ def test_render_not_configured():
     lines = render_lines(info)
     assert "Wi-Fi : indisponible (pays non réglé ?)" in lines
     assert "Adresse IP : aucune" in lines
-    assert any("berrycast-wifi.txt" in line for line in lines)
+    assert any("clavier" in line for line in lines)
     assert any(line.startswith("ATTENTION") for line in lines)
     assert "ERREUR : pays invalide" in lines
 

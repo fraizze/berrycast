@@ -113,6 +113,11 @@ class SetupForm:
         keys += ["country", "pi_password", "pi_password2", "submit"]
         return [self.rows_by_key[k] for k in keys]
 
+    def focus_key(self, key: str) -> None:
+        keys = [r.key for r in self.rows]
+        if key in keys:
+            self.focus = keys.index(key)
+
     @property
     def current(self) -> Row:
         rows = self.rows
