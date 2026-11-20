@@ -298,3 +298,16 @@ def test_f2_key_sequences():
     from berrycast.setup.keys import KeyDecoder
 
     assert KeyDecoder().feed(b"\x1b[[B\x1bOQ") == [("key", "f2"), ("key", "f2")]
+
+
+def test_refresh_screen_status(monkeypatch, tmp_path):
+    from berrycast.dev import devsetup
+
+    monkeypatch.setattr(devsetup, "STATE_FILE", tmp_path / "devsetup.json")
+    devsetup.save_state({"ssh_password_set": False, "regdomain": "00", "errors": ["vieux"]})
+    monkeypatch.setattr(devsetup, "ssh_password_is_set", lambda: True)
+    monkeypatch.setattr(devsetup, "current_regdomain", lambda: "CH")
+    apply.refresh_screen_status()
+    state = devsetup.load_state()
+    assert state["ssh_password_set"] is True and state["regdomain"] == "CH"
+    assert state["errors"] == []

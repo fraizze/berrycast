@@ -183,6 +183,19 @@ def apply(req: dict) -> dict:
     return {"ok": True, "ip": wifi_ip(), "warnings": warnings}
 
 
+def refresh_screen_status() -> None:
+    """Met à jour l'état lu par l'écran « BerryCast dev » (pays Wi-Fi, mot de passe de pi).
+
+    Sans cela, l'écran garderait l'état du démarrage (avant la configuration).
+    Les anciens messages de berrycast-wifi.txt sont effacés : ils ne sont plus d'actualité.
+    """
+    state = devsetup.load_state()
+    state["ssh_password_set"] = devsetup.ssh_password_is_set()
+    state["regdomain"] = devsetup.current_regdomain()
+    state["errors"], state["warnings"], state["messages"] = [], [], []
+    devsetup.save_state(state)
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
     request_path = RUN_DIR / REQUEST
@@ -199,6 +212,11 @@ def main() -> int:
     except Exception as exc:  # toujours répondre à l'interface
         log.exception("Erreur pendant l'application")
         result = {"ok": False, "error": "failed", "details": [str(exc)]}
+
+    try:
+        refresh_screen_status()
+    except Exception:  # l'écran est secondaire : ne jamais bloquer la réponse
+        log.exception("État de l'écran non mis à jour")
 
     tmp = RUN_DIR / (RESULT + ".tmp")
     tmp.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
