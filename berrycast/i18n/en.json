@@ -1,0 +1,14 @@
+{
+  "welcome": "Welcome",
+  "ready": "Ready to receive",
+  "connect_windows": "From a Windows PC: press Windows + K",
+  "connect_apple": "From an iPhone, iPad or Mac: \"Screen Mirroring\"",
+  "settings_address": "Settings: {url}",
+  "setup_join_wifi": "Join the Wi-Fi: {ssid}",
+  "setup_wifi_password": "Password: {password}",
+  "verification_code": "Verification code: {code}",
+  "pin_code": "Code: {code}",
+  "busy": "Someone is already casting",
+  "connecting": "Connecting…",
+  "error_restarting": "Something went wrong, restarting…"
+}

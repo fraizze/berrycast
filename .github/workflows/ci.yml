@@ -1,0 +1,33 @@
+# Vérifications automatiques à chaque envoi (push) et à chaque pull request :
+# linter (ruff) + tests unitaires (pytest).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 3.11 : version minimale ; 3.13 : version de Raspberry Pi OS « Trixie »
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Installer les outils
+        run: pip install pytest ruff
+
+      - name: Linter (ruff)
+        run: ruff check .
+
+      - name: Tests (pytest)
+        run: pytest -v

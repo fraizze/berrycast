@@ -1,0 +1,8 @@
+# Fins de ligne Unix (LF) pour tous les fichiers texte, même quand on développe sous Windows :
+# les scripts et fichiers de configuration tournent sur le Raspberry Pi (Linux).
+* text=auto eol=lf
+
+# Fichiers binaires
+*.png binary
+*.jpg binary
+*.xz binary

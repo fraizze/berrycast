@@ -1,0 +1,14 @@
+{
+  "welcome": "Bienvenue",
+  "ready": "Prêt à recevoir",
+  "connect_windows": "Depuis un PC Windows : appuyez sur Windows + K",
+  "connect_apple": "Depuis un iPhone, iPad ou Mac : « Recopie de l'écran »",
+  "settings_address": "Réglages : {url}",
+  "setup_join_wifi": "Rejoignez le Wi-Fi : {ssid}",
+  "setup_wifi_password": "Mot de passe : {password}",
+  "verification_code": "Code de vérification : {code}",
+  "pin_code": "Code : {code}",
+  "busy": "Une diffusion est déjà en cours",
+  "connecting": "Connexion en cours…",
+  "error_restarting": "Un problème est survenu, redémarrage en cours…"
+}

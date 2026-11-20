@@ -1,0 +1,19 @@
+[project]
+name = "berrycast"
+version = "0.0.1"
+description = "Transforme un Raspberry Pi en écran sans fil (Miracast + AirPlay)"
+readme = "README.md"
+# Raspberry Pi OS « Trixie » fournit Python 3.13 ; tomllib demande au moins 3.11.
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# E/W : style, F : erreurs, I : ordre des imports, B : pièges courants, UP : syntaxe moderne
+select = ["E", "W", "F", "I", "B", "UP"]
