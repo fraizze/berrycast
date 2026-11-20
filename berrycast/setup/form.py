@@ -36,9 +36,9 @@ class Row:
         values = [v for v, _ in self.options]
         return values.index(self.value) if self.value in values else -1
 
-    def display_value(self) -> str:
+    def display_value(self, show_password: bool = False) -> str:
         if self.kind == "password":
-            return "•" * len(self.value)
+            return self.value if show_password else "•" * len(self.value)
         if self.kind == "choice":
             index = self.option_index()
             return self.options[index][1] if index >= 0 else self.hint
@@ -75,6 +75,7 @@ class SetupForm:
         self.set_networks(networks)
         self.focus = 0
         self.dropdown: Dropdown | None = None
+        self.show_passwords = False  # F2 : voir les mots de passe (vérifier le clavier)
 
     # ---- Contenu --------------------------------------------------------------
 
@@ -147,6 +148,8 @@ class SetupForm:
                 row.error = ""
             elif value == "f5":
                 return REFRESH
+            elif value == "f2":
+                self.show_passwords = not self.show_passwords
             self.focus = max(0, min(self.focus, len(self.rows) - 1))
             return None
         # caractère tapé
@@ -225,6 +228,10 @@ class SetupForm:
                 r["wifi_password"].error = t("setup_err_psk")
         elif self.needs_wifi_password() and not is_valid_psk(r["wifi_password"].value):
             r["wifi_password"].error = t("setup_err_psk")
+        bad = next((c for c in r["wifi_password"].value if not 32 <= ord(c) <= 126), None)
+        if r["wifi_password"].error and bad:
+            # Souvent une mauvaise disposition du clavier (ex. AZERTY : 1 donne « & », 2 « é »)
+            r["wifi_password"].error = t("setup_err_psk_char", char=bad)
         pw = r["pi_password"].value
         if len(pw) < MIN_PI_PASSWORD or ":" in pw:
             r["pi_password"].error = t("setup_err_pi_short")

@@ -16,6 +16,7 @@ SEQUENCES = {
     "\x1b[1~": "home", "\x1b[H": "home", "\x1b[4~": "end", "\x1b[F": "end",
     "\x1b[3~": "delete", "\x1b[2~": "insert",
     "\x1b[[E": "f5", "\x1b[15~": "f5",
+    "\x1b[[B": "f2", "\x1bOQ": "f2", "\x1b[12~": "f2",
 }
 SINGLE = {
     "\r": "enter", "\n": "enter", "\t": "tab", "\x7f": "backspace", "\x08": "backspace",

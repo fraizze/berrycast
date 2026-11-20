@@ -12,7 +12,7 @@
   "setup_title": "Bienvenue sur BerryCast",
   "setup_subtitle": "Configurons votre écran sans fil",
   "setup_keyboard": "Clavier",
-  "setup_keyboard_failed": "Disposition du clavier non appliquée",
+  "setup_keyboard_failed": "Disposition non appliquée : choisissez-la à nouveau",
   "setup_name": "Nom de l'appareil",
   "setup_wifi": "Wi-Fi",
   "setup_refresh": "Actualiser la liste des Wi-Fi",
@@ -27,7 +27,7 @@
   "setup_pi_password": "Mot de passe de « pi »",
   "setup_pi_password2": "Confirmer le mot de passe",
   "setup_submit": "Valider",
-  "setup_help": "↑ ↓ se déplacer    ← → changer    Entrée choisir",
+  "setup_help": "↑ ↓ se déplacer    ← → changer    Entrée choisir    F2 voir les mots de passe",
   "setup_help_dropdown": "↑ ↓ choisir    lettre : aller à    Entrée valider    Échap fermer",
   "setup_err_name": "Nom invalide (1 à 32 caractères)",
   "setup_err_wifi": "Indiquez le nom du Wi-Fi",
@@ -45,5 +45,7 @@
   "setup_err_not_found": "Wi-Fi « {ssid} » introuvable : vérifiez le nom ou actualisez la liste.",
   "setup_err_timeout": "Le système n'a pas répondu à temps. Réessayez.",
   "setup_err_invalid": "Réglages refusés : vérifiez les champs.",
-  "setup_err_failed": "Connexion à « {ssid} » impossible. Réessayez."
+  "setup_err_failed": "Connexion à « {ssid} » impossible. Réessayez.",
+  "setup_keyboard_applying": "Application de la disposition du clavier…",
+  "setup_err_psk_char": "Caractère refusé « {char} » : vérifiez la ligne Clavier"
 }

@@ -12,7 +12,7 @@
   "setup_title": "Welcome to BerryCast",
   "setup_subtitle": "Let's set up your wireless display",
   "setup_keyboard": "Keyboard",
-  "setup_keyboard_failed": "Keyboard layout not applied",
+  "setup_keyboard_failed": "Layout not applied: choose it again",
   "setup_name": "Device name",
   "setup_wifi": "Wi-Fi",
   "setup_refresh": "Refresh the Wi-Fi list",
@@ -27,7 +27,7 @@
   "setup_pi_password": "\"pi\" password",
   "setup_pi_password2": "Confirm password",
   "setup_submit": "Done",
-  "setup_help": "↑ ↓ move    ← → change    Enter select",
+  "setup_help": "↑ ↓ move    ← → change    Enter select    F2 show passwords",
   "setup_help_dropdown": "↑ ↓ choose    letter: jump    Enter confirm    Esc close",
   "setup_err_name": "Invalid name (1 to 32 characters)",
   "setup_err_wifi": "Enter the Wi-Fi name",
@@ -45,5 +45,7 @@
   "setup_err_not_found": "Wi-Fi \"{ssid}\" not found: check the name or refresh the list.",
   "setup_err_timeout": "The system did not answer in time. Try again.",
   "setup_err_invalid": "Settings refused: check the fields.",
-  "setup_err_failed": "Could not connect to \"{ssid}\". Try again."
+  "setup_err_failed": "Could not connect to \"{ssid}\". Try again.",
+  "setup_keyboard_applying": "Applying the keyboard layout…",
+  "setup_err_psk_char": "Character not allowed \"{char}\": check the Keyboard line"
 }

@@ -130,7 +130,22 @@ def explain_failure(nm_error: str) -> str:
     return "failed"
 
 
+def apply_keyboard_only(req: dict) -> dict:
+    """Demande « clavier seul » : charger la disposition sur tty1 et l'enregistrer."""
+    from berrycast.setup.keyboards import Layout, is_safe
+    from berrycast.setup.keyboards import apply as load_layout
+
+    layout, variant = req.get("keyboard_layout") or "", req.get("keyboard_variant") or ""
+    if not is_safe(layout, variant):
+        return {"ok": False, "error": "invalid", "details": ["disposition invalide"]}
+    ok, error = load_layout(Layout(layout, layout, variant), console="/dev/tty1")
+    save_keyboard(layout, variant)
+    return {"ok": ok, "details": [error] if error else []}
+
+
 def apply(req: dict) -> dict:
+    if req.get("action") == "keyboard":
+        return apply_keyboard_only(req)
     errors = validate(req)
     if errors:
         return {"ok": False, "error": "invalid", "details": errors}

@@ -28,11 +28,12 @@ class Session:
     def __init__(self, form: SetupForm,
                  scan: Callable[[bool], list[dict]],
                  submit: Callable[[dict], dict] = apply_mod.submit,
-                 apply_keyboard: Callable[[keyboards.Layout], bool] = keyboards.apply):
+                 apply_keyboard: Callable[[keyboards.Layout], tuple[bool, str]] | None = None):
         self.form = form
         self.scan = scan
         self.submit = submit
-        self.apply_keyboard = apply_keyboard
+        # Sans root d'abord ; en cas d'échec, la partie root applique la disposition.
+        self.apply_keyboard = apply_keyboard or self._apply_keyboard_default
         self.state = "form"
         self.notice = ""  # message en bas de l'écran
         self.notice_until = 0.0
@@ -63,9 +64,27 @@ class Session:
         return True
 
     def keyboard_changed(self) -> None:
-        layout = keyboards.LAYOUTS[int(self.form.rows_by_key["keyboard"].value)]
-        if not self.apply_keyboard(layout):
-            self.notify(t("setup_keyboard_failed"))
+        """Applique la disposition choisie (en arrière-plan : cela peut prendre quelques
+        secondes) ; un échec reste affiché sur la ligne « Clavier »."""
+        row = self.form.rows_by_key["keyboard"]
+        layout = keyboards.LAYOUTS[int(row.value)]
+
+        def work() -> None:
+            ok, _ = self.apply_keyboard(layout)
+            row.error = "" if ok else t("setup_keyboard_failed")
+
+        self.start(work, t("setup_keyboard_applying"))
+
+    def _apply_keyboard_default(self, layout: keyboards.Layout) -> tuple[bool, str]:
+        ok, error = keyboards.apply_local(layout)
+        if ok:
+            return True, ""
+        try:
+            result = self.submit({"action": "keyboard", "keyboard_layout": layout.layout,
+                                  "keyboard_variant": layout.variant})
+        except OSError as exc:
+            return False, str(exc)
+        return bool(result.get("ok")), "; ".join(result.get("details", [])) or error
 
     def notify(self, message: str, seconds: float = 5) -> None:
         self.notice = message

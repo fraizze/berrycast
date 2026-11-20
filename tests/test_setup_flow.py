@@ -28,7 +28,7 @@ def filled_session(submit_result):
         return submit_result
 
     session = Session(form, scan=lambda rescan: NETWORKS, submit=submit,
-                      apply_keyboard=lambda layout: True)
+                      apply_keyboard=lambda layout: (True, ""))
     form.focus_key("submit")
     return session, sent
 
@@ -213,3 +213,88 @@ def test_console_shows_connection_error():
     session.wait(2)
     text = "\n".join(visible_lines(console_ui.render(session, 120, 33), 33))
     assert "introuvable" in text
+
+
+# --- Clavier -----------------------------------------------------------------
+
+
+def test_keyboard_failure_falls_back_to_root_then_shows_error(monkeypatch):
+    from berrycast.setup import keyboards
+
+    form = SetupForm(NETWORKS, COUNTRIES, detected_country="CH")
+    sent = []
+    monkeypatch.setattr(keyboards, "apply_local", lambda layout: (False, "loadkeys : refusé"))
+    session = Session(form, scan=lambda r: NETWORKS,
+                      submit=lambda req: (sent.append(req), {"ok": False, "details": ["x"]})[1])
+    session.keyboard_changed()
+    session.wait(2)
+    assert sent == [{"action": "keyboard", "keyboard_layout": "ch", "keyboard_variant": "fr"}]
+    assert form.rows_by_key["keyboard"].error  # l'échec reste visible
+    assert session.busy == ""
+
+
+def test_keyboard_root_fallback_success(monkeypatch):
+    from berrycast.setup import keyboards
+
+    form = SetupForm(NETWORKS, COUNTRIES)
+    monkeypatch.setattr(keyboards, "apply_local", lambda layout: (False, "refusé"))
+    session = Session(form, scan=lambda r: NETWORKS, submit=lambda req: {"ok": True})
+    session.keyboard_changed()
+    session.wait(2)
+    assert form.rows_by_key["keyboard"].error == ""
+
+
+def test_keyboards_apply_uses_temp_file_and_console(monkeypatch):
+    from berrycast.setup import keyboards
+
+    calls = []
+
+    class Done:
+        def __init__(self, stdout=b"", returncode=0):
+            self.stdout, self.returncode, self.stderr = stdout, returncode, b""
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        if cmd[0] == "loadkeys":
+            with open(cmd[-1], "rb") as f:
+                assert f.read() == b"keymap"
+        return Done(stdout=b"keymap")
+
+    monkeypatch.setattr(keyboards.subprocess, "run", fake_run)
+    ok, error = keyboards.apply(keyboards.LAYOUTS[0], console="/dev/tty1")
+    assert ok and error == ""
+    assert calls[0] == ["ckbcomp", "-layout", "ch", "-variant", "fr"]
+    assert calls[1][:5] == ["loadkeys", "-q", "-u", "-C", "/dev/tty1"]
+    assert keyboards.apply(keyboards.Layout("x", "ch;rm", ""))[0] is False  # refusé
+
+
+def test_root_keyboard_only_request(monkeypatch, tmp_path):
+    from berrycast.setup import keyboards
+
+    monkeypatch.setattr(apply, "KEYBOARD_FILE", tmp_path / "keyboard")
+    monkeypatch.setattr(keyboards, "apply",
+                        lambda layout, console=None: (console == "/dev/tty1", ""))
+    res = apply.apply({"action": "keyboard", "keyboard_layout": "ch", "keyboard_variant": "fr"})
+    assert res["ok"] is True
+    assert 'XKBLAYOUT="ch"' in (tmp_path / "keyboard").read_text()
+    bad = apply.apply({"action": "keyboard", "keyboard_layout": "ch;x", "keyboard_variant": ""})
+    assert bad["ok"] is False
+
+
+def test_azerty_digits_give_clear_error_and_f2_shows_password():
+    form = SetupForm(NETWORKS, COUNTRIES)
+    form.rows_by_key["wifi_password"].value = "&é\"'(-è_"  # « 12345678 » tapé en AZERTY
+    form.rows_by_key["pi_password"].value = "secret123"
+    form.rows_by_key["pi_password2"].value = "secret123"
+    assert not form.validate()
+    assert "« é »" in form.rows_by_key["wifi_password"].error
+    row = form.rows_by_key["wifi_password"]
+    assert row.display_value() == "•" * 8
+    form.handle("key", "f2")
+    assert row.display_value(form.show_passwords) == "&é\"'(-è_"
+
+
+def test_f2_key_sequences():
+    from berrycast.setup.keys import KeyDecoder
+
+    assert KeyDecoder().feed(b"\x1b[[B\x1bOQ") == [("key", "f2"), ("key", "f2")]

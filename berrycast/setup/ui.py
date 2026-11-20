@@ -197,7 +197,7 @@ class SetupUI:
         self.box(rect, FIELD_FOCUS if focused else FIELD, FG if focused else LINE,
                  3 if focused else 2)
 
-        value = row.display_value()
+        value = row.display_value(self.form.show_passwords)
         color = FG if (row.value or row.kind != "choice") else MUTED
         arrows_w = round(70 * th.s) if row.kind == "choice" else 0
         inner_w = rect.width - 2 * th.pad - arrows_w

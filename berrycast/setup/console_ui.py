@@ -29,9 +29,9 @@ def _clip(text: str, width: int) -> str:
     return text if len(text) <= width else text[: max(0, width - 1)] + "…"
 
 
-def _field(row: Row, focused: bool, width: int) -> str:
+def _field(row: Row, focused: bool, width: int, show_password: bool = False) -> str:
     """Valeur d'un champ, sur `width` colonnes exactement : 2 colonnes, valeur, 1 colonne."""
-    value = row.display_value()
+    value = row.display_value(show_password)
     if row.kind == "choice":
         prefix, suffix = (LEFT + " " if focused else "  "), RIGHT
     else:
@@ -107,7 +107,8 @@ def render(session: Session, cols: int, rows: int) -> str:
         else:
             name = _clip(row.label, LABEL_WIDTH - 2).ljust(LABEL_WIDTH)
             name = f"{BOLD}{name}{RESET}" if focused else name
-            lines.append((name + _field(row, focused, width - LABEL_WIDTH), i))
+            lines.append((name + _field(row, focused, width - LABEL_WIDTH, form.show_passwords),
+                          i))
         if row.error:
             error = _clip(row.error, width - LABEL_WIDTH)
             lines.append((" " * LABEL_WIDTH + f"{RED}{error}{RESET}", i))
