@@ -32,8 +32,9 @@ TTYVHangup=yes
 TTYVTDisallocate=yes
 
 # Grande police console (Terminus 32x16) ; « + » = cette commande seule tourne en root,
-# « - » = on continue même si elle échoue.
-ExecStartPre=-+/usr/bin/setfont -C /dev/tty1 /usr/share/consolefonts/Lat15-TerminusBold32x16.psf.gz
+# « - » = on continue même si elle échoue. On préfère la copie avec le caractère « ▀ »
+# (QR code, voir berrycast/display/fontpatch.py), sinon la police d'origine.
+ExecStartPre=-+/bin/sh -c 'setfont -C /dev/tty1 /usr/share/berrycast/fonts/berrycast-32x16.psf || setfont -C /dev/tty1 /usr/share/consolefonts/Lat15-TerminusBold32x16.psf.gz'
 ExecStart=/usr/bin/python3 -m berrycast.dev.screen
 Restart=always
 RestartSec=2

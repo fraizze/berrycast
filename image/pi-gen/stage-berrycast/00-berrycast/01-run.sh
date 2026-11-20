@@ -18,6 +18,11 @@ chmod -R u=rwX,go=rX "${ROOTFS_DIR}/opt/berrycast"
 install -m 644 "${SRC}/system/dev/berrycast-devsetup.service" "${ROOTFS_DIR}/etc/systemd/system/"
 install -m 644 "${SRC}/system/dev/berrycast-devscreen.service" "${ROOTFS_DIR}/etc/systemd/system/"
 
+# Portail captif du mode configuration (uniquement pour le Wi-Fi temporaire « partagé »)
+install -d -m 755 "${ROOTFS_DIR}/etc/NetworkManager/dnsmasq-shared.d"
+install -m 644 "${SRC}/system/networkmanager/berrycast-captive.conf" \
+	"${ROOTFS_DIR}/etc/NetworkManager/dnsmasq-shared.d/"
+
 # 3. Console : écran jamais éteint, curseur masqué, moins de messages du noyau sur l'écran
 sed -i '1 s/$/ consoleblank=0 loglevel=3 vt.global_cursor_default=0/' \
 	"${ROOTFS_DIR}/boot/firmware/cmdline.txt"
@@ -47,6 +52,11 @@ systemctl mask getty@tty1.service
 if [ -d /etc/cloud ]; then
 	touch /etc/cloud/cloud-init.disabled
 fi
+
+# Police console avec le caractère « ▀ » (pour dessiner le QR code sur la TV)
+PYTHONPATH=/opt/berrycast python3 -m berrycast.display.fontpatch \
+	/usr/share/consolefonts/Lat15-TerminusBold32x16.psf.gz \
+	/usr/share/berrycast/fonts/berrycast-32x16.psf
 
 # Modèle vide de berrycast-wifi.txt sur la partition de démarrage
 PYTHONPATH=/opt/berrycast python3 -c "from berrycast.dev import wifi_file; open('/boot/firmware/berrycast-wifi.txt', 'w', encoding='utf-8', newline='').write(wifi_file.render())"

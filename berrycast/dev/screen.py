@@ -181,6 +181,104 @@ def layout(lines: list[str], cols: int, rows: int) -> str:
     return "".join(out)
 
 
+QR_GAP = 4  # espace entre le texte et le QR code (colonnes)
+
+
+def setup_text(setup: dict) -> list[str]:
+    """Texte de l'écran de configuration (première ligne = titre, en gras)."""
+    from berrycast.i18n import t
+
+    lines = [
+        t("setup_title"),
+        "",
+        t("setup_step_join"),
+        f"   {setup.get('ssid', '?')}",
+    ]
+    if setup.get("password"):
+        lines.append("   " + t("setup_wifi_password", password=setup["password"]))
+    lines += [
+        "   " + t("setup_or_scan"),
+        "",
+        t("setup_step_page"),
+        "   " + t("setup_or_open", url=setup.get("url", "")),
+        "",
+        t("setup_step_code"),
+    ]
+    code = str(setup.get("code", ""))
+    lines.append("   " + (f"{code[:3]} {code[3:]}" if len(code) == 6 else code))
+    if setup.get("message"):
+        lines += ["", str(setup["message"])]
+    return lines
+
+
+def render_setup(setup: dict, cols: int, rows: int, qr_lines: list[str] | None,
+                 qr_width: int) -> str:
+    """Écran de configuration : texte à gauche, QR code à droite (ou dessous, ou absent).
+
+    Chaque ligne est placée à une position précise (le QR contient des codes couleur,
+    on ne peut pas le centrer en comptant les caractères).
+    """
+    text = [line[:cols] for line in setup_text(setup)]
+    text_w = max(len(line) for line in text)
+    code_line = len(text) - 1 - (2 if setup.get("message") else 0)
+    qr_lines = qr_lines or []
+
+    placed: list[tuple[int, int, str]] = []  # (ligne, colonne, contenu), 0 = premier
+    if qr_lines and cols >= text_w + QR_GAP + qr_width and rows >= max(len(text), len(qr_lines)):
+        height = max(len(text), len(qr_lines))
+        top = (rows - height) // 2
+        left = (cols - (text_w + QR_GAP + qr_width)) // 2
+        t_top = top + (height - len(text)) // 2
+        q_top = top + (height - len(qr_lines)) // 2
+        placed += [(t_top + i, left, line) for i, line in enumerate(text)]
+        placed += [(q_top + i, left + text_w + QR_GAP, line) for i, line in enumerate(qr_lines)]
+    elif qr_lines and cols >= max(text_w, qr_width) and rows >= len(text) + 1 + len(qr_lines):
+        top = (rows - (len(text) + 1 + len(qr_lines))) // 2
+        left = (cols - text_w) // 2
+        placed += [(top + i, left, line) for i, line in enumerate(text)]
+        q_left = (cols - qr_width) // 2
+        placed += [(top + len(text) + 1 + i, q_left, line) for i, line in enumerate(qr_lines)]
+    else:  # pas de place pour le QR : texte seul, centré
+        top = max(0, (rows - len(text)) // 2)
+        left = max(0, (cols - text_w) // 2)
+        placed += [(top + i, left, line) for i, line in enumerate(text[:rows])]
+
+    out = [CLEAR, HIDE_CURSOR, NO_BLANKING]
+    text_rows = {row for row, _, line in placed if "\033" not in line}
+    first_text_row = min(text_rows) if text_rows else -1
+    for row, col, line in placed:
+        is_text = "\033" not in line
+        bold = is_text and (row == first_text_row or row == first_text_row + code_line)
+        out.append(f"\033[{row + 1};{col + 1}H")
+        out.append(f"{BOLD}{line}{NORMAL}" if bold else line)
+    return "".join(out)
+
+
+_qr_cache: dict[str, tuple[list[str], int]] = {}
+
+
+def setup_qr(setup: dict) -> tuple[list[str] | None, int]:
+    """QR code « rejoindre le Wi-Fi » (None si python3-qrcode n'est pas installé)."""
+    from berrycast.setup import qr
+
+    payload = qr.wifi_payload(setup.get("ssid", ""), setup.get("password"))
+    if payload not in _qr_cache:
+        try:
+            matrix = qr.qr_matrix(payload)
+        except ImportError:
+            print("Écran : python3-qrcode absent, QR code non affiché", file=sys.stderr)
+            return None, 0
+        _qr_cache[payload] = (qr.to_terminal_lines(matrix), qr.visible_width(matrix))
+    return _qr_cache[payload]
+
+
+def read_setup_state() -> dict:
+    from berrycast.setup import state
+
+    setup = state.read()
+    return setup if setup.get("active") else {}
+
+
 def open_output() -> int:
     """Descripteur où écrire : la sortie standard (tty1 donné par systemd), ou BERRYCAST_TTY."""
     if TTY:
@@ -209,11 +307,16 @@ def main() -> int:
     while True:
         try:
             cols, rows = terminal_size(fd)
-            lines = render_lines(gather())
+            setup = read_setup_state()
+            if setup:  # mode configuration : Wi-Fi temporaire, QR code, code
+                qr_lines, qr_width = setup_qr(setup)
+                screen = render_setup(setup, cols, rows, qr_lines, qr_width)
+            else:
+                screen = layout(render_lines(gather()), cols, rows)
             now = time.monotonic()
-            if lines != last_text or now - last_full > FULL_REDRAW_SECONDS:
-                write_all(fd, layout(lines, cols, rows).encode("utf-8"))
-                last_text, last_full = lines, now
+            if screen != last_text or now - last_full > FULL_REDRAW_SECONDS:
+                write_all(fd, screen.encode("utf-8"))
+                last_text, last_full = screen, now
             failures = 0
         except OSError as exc:
             failures += 1
