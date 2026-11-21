@@ -440,6 +440,10 @@ def test_video_formats_constrained_baseline_fitting_display():
     assert fields[2] == "01" and fields[3] == "08"
     assert int(fields[4], 16) == (1 << 0) | (1 << 5) | (1 << 7)  # 640x480p60, 720p30, 1080p30
     assert fields[5] == "00000000" and fields[6] == "00000000"  # ni VESA ni HH
+    # Mode natif = le meilleur proposé (sinon Windows prend 640x480 : image floue, étirée)
+    assert fields[0] == "38"  # CEA n° 7 : 1920x1080p30
+    assert wfd.video_formats((1280, 720)).split()[0] == "28"  # CEA n° 5 : 1280x720p30
+    assert wfd.video_formats((1024, 768)).split()[0] == "00"  # CEA n° 0 : 640x480p60
     # Seulement les modes qui tiennent dans l'écran
     assert int(wfd.video_formats((1280, 720)).split()[4], 16) == (1 << 0) | (1 << 5)
     assert int(wfd.video_formats((1024, 768)).split()[4], 16) == 1 << 0
@@ -535,3 +539,11 @@ def test_audio_output_format_is_fixed():
     text = " ".join(pipeline.build_command("v4l2h264dec", "plughw:CARD=vc4hdmi,DEV=0"))
     assert ("! audioconvert ! audioresample ! audio/x-raw,format=S16LE,rate=48000,channels=2 "
             "! alsasink sync=false device=plughw:CARD=vc4hdmi,DEV=0") in text
+
+
+def test_chosen_mode():
+    tail = "00000000 00000000 00 0000 0000 00 none none"
+    assert wfd.chosen_mode(f"28 00 01 08 00000020 {tail}") == "1280x720p30"
+    assert wfd.chosen_mode(f"00 00 01 08 00000001 {tail}") == "640x480p60"
+    assert wfd.chosen_mode("00 00 01 08 00000000 00000004 00000000 00 0000 0000 00") == "VESA n° 2"
+    assert wfd.chosen_mode("none") == "inconnu" and wfd.chosen_mode("") == "inconnu"

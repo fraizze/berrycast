@@ -44,18 +44,49 @@ LEVEL_41 = "08"
 
 
 def video_formats(display: tuple[int, int] = (1920, 1080)) -> str:
-    """Valeur de wfd_video_formats selon la taille de l'écran."""
+    """Valeur de wfd_video_formats selon la taille de l'écran.
+
+    Premier champ : mode « natif » de l'écran = celui que la source préfère.
+    Bits 2-0 : table (0 = CEA), bits 7-3 : numéro du mode dans la table.
+    Constaté sur le Pi : avec « 00 » (= 640x480p60), Windows envoyait du 640x480,
+    agrandi et étiré en 16:9 à l'écran. On annonce comme natif le meilleur mode proposé.
+    """
     width, height = display
     cea = CEA_640x480P60
     if width >= 1280 and height >= 720:
         cea |= CEA_1280x720P30
     if width >= 1920 and height >= 1080:
         cea |= CEA_1920x1080P30
-    return (f"00 00 {PROFILE_CBP} {LEVEL_41} {cea:08X} 00000000 00000000 "
+    native = (cea.bit_length() - 1) << 3  # numéro du mode le plus haut, table CEA (0)
+    return (f"{native:02X} 00 {PROFILE_CBP} {LEVEL_41} {cea:08X} 00000000 00000000 "
             "00 0000 0000 00 none none")
 
 
 VIDEO_FORMATS = video_formats()
+
+
+# Modes CEA de la spécification Wi-Fi Display (numéro de bit -> nom)
+CEA_MODES = ("640x480p60", "720x480p60", "720x480i60", "720x576p50", "720x576i50",
+             "1280x720p30", "1280x720p60", "1920x1080p30", "1920x1080p60", "1920x1080i60",
+             "1280x720p25", "1280x720p50", "1920x1080p25", "1920x1080p50", "1920x1080i50",
+             "1280x720p24", "1920x1080p24")
+
+
+def chosen_mode(value: str) -> str:
+    """Mode choisi par la source dans M4 (« … 00000020 … » -> « 1280x720p30 »)."""
+    parts = value.split()
+    try:
+        cea, vesa, hh = (int(x, 16) for x in parts[4:7])
+    except ValueError:
+        return "inconnu"
+    if cea:
+        bit = cea.bit_length() - 1
+        return CEA_MODES[bit] if bit < len(CEA_MODES) else f"CEA n° {bit}"
+    if vesa:
+        return f"VESA n° {vesa.bit_length() - 1}"
+    if hh:
+        return f"HH n° {hh.bit_length() - 1}"
+    return "inconnu"
 
 
 def chosen_profile(value: str) -> int | None:

@@ -103,6 +103,9 @@ class RtspSink:
             for key in ("wfd_video_formats", "wfd_audio_codecs"):
                 if key in values:
                     self.formats[key] = values[key]
+            if "wfd_video_formats" in values:
+                log.info("Mode vidéo choisi par la source : %s",
+                         wfd.chosen_mode(values["wfd_video_formats"]))
             if trigger == "SETUP":  # M5 -> M6
                 self.request("SETUP", self.presentation_url, "SETUP", {
                     "Transport": f"RTP/AVP/UDP;unicast;client_port={wfd.RTP_PORT}"})

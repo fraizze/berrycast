@@ -98,3 +98,8 @@ iPhone diffuse → la demande MICE du PC est refusée. Choix : **refuser** (CLAU
   le Wi-Fi 2,4 GHz du Pi 3 → 720p demandé à Windows sur Pi 3 / Zero 2 W (1080p sur
   Pi 4 / 5), agrandi par la puce. Le journal signale les paquets perdus faute de place
   (`/proc/net/udp`, colonne « drops »).
+- **Image floue et étirée.** Le premier champ de `wfd_video_formats` (mode « natif » :
+  bits 2-0 = table, bits 7-3 = numéro du mode) valait `00` = 640x480p60 : Windows
+  envoyait du 640x480 (4:3), agrandi et étiré en 16:9. On annonce maintenant le meilleur
+  mode proposé (`28` = 1280x720p30 sur Pi 3, `38` = 1920x1080p30 sur Pi 4/5). Le mode
+  choisi par Windows est écrit au journal (« Mode vidéo choisi par la source »).
