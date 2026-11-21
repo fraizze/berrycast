@@ -110,3 +110,7 @@ iPhone diffuse → la demande MICE du PC est refusée. Choix : **refuser** (CLAU
   jetait les paquets arrivés plus de 150 ms après l'heure prévue (Wi-Fi du Pi en économie
   d'énergie : paquets livrés par paquets groupés). Retiré : en Wi-Fi direct les paquets
   arrivent dans l'ordre (lazycast n'en a pas non plus), et 150 ms de retard en moins.
+- **Petits gels par zone** (720p30, aucun paquet perdu côté Pi) : paquets perdus dans le
+  Wi-Fi, économie d'énergie de la puce active (« Power save: on »). Coupée par
+  NetworkManager (`wifi.powersave = 2`, `system/networkmanager/`), validé par le
+  développeur le 21/11/2026.

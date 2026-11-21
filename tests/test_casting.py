@@ -550,3 +550,14 @@ def test_chosen_mode():
     assert wfd.chosen_mode(f"00 00 01 08 00000001 {tail}") == "640x480p60"
     assert wfd.chosen_mode("00 00 01 08 00000000 00000004 00000000 00 0000 0000 00") == "VESA n° 2"
     assert wfd.chosen_mode("none") == "inconnu" and wfd.chosen_mode("") == "inconnu"
+
+
+def test_wifi_powersave_disabled_config():
+    root = Path(__file__).parent.parent
+    conf = (root / "system" / "networkmanager" / "berrycast-wifi-powersave.conf").read_text(
+        encoding="utf-8")
+    assert "[connection]" in conf and "wifi.powersave = 2" in conf  # 2 = désactivée
+    update = (root / "scripts" / "dev-update.sh").read_text(encoding="utf-8")
+    assert "berrycast-wifi-powersave.conf" in update
+    image = (root / "image" / "pi-gen" / "stage-berrycast" / "00-berrycast" / "01-run.sh")
+    assert "berrycast-wifi-powersave.conf" in image.read_text(encoding="utf-8")

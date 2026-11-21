@@ -62,6 +62,13 @@ usermod -a -G video,render,netdev,audio berrycast
 # Tampon de réception UDP pour la vidéo Miracast (appliqué tout de suite, sans couper le Wi-Fi)
 install -m 644 "${SRC}/system/sysctl/90-berrycast.conf" /etc/sysctl.d/
 sysctl -q -p /etc/sysctl.d/90-berrycast.conf || echo "   (tampon réseau : réglage pris en compte au prochain démarrage)"
+# Économie d'énergie du Wi-Fi coupée : réglage permanent (NetworkManager, à chaque
+# connexion) + tout de suite sur la connexion en cours. Ne coupe pas le Wi-Fi.
+# Pour revenir en arrière : supprimer le fichier, puis « iw dev wlan0 set power_save on ».
+install -d -m 755 /etc/NetworkManager/conf.d
+install -m 644 "${SRC}/system/networkmanager/berrycast-wifi-powersave.conf" 	/etc/NetworkManager/conf.d/
+nmcli general reload conf || true  # relit la configuration sans couper le Wi-Fi
+/usr/sbin/iw dev wlan0 set power_save off 2>/dev/null || true
 # Ancien réglage (groupes Wi-Fi Direct) devenu inutile avec MICE
 if [ -f /etc/NetworkManager/conf.d/berrycast-p2p.conf ]; then
 	rm -f /etc/NetworkManager/conf.d/berrycast-p2p.conf

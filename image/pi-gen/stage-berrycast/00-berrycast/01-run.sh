@@ -25,6 +25,10 @@ install -m 644 "${SRC}/system/polkit/50-berrycast.rules" "${ROOTFS_DIR}/etc/polk
 install -d -m 755 "${ROOTFS_DIR}/etc/sysctl.d"
 install -m 644 "${SRC}/system/sysctl/90-berrycast.conf" "${ROOTFS_DIR}/etc/sysctl.d/"
 
+# Économie d'énergie du Wi-Fi coupée (pertes de paquets vidéo Miracast sinon)
+install -d -m 755 "${ROOTFS_DIR}/etc/NetworkManager/conf.d"
+install -m 644 "${SRC}/system/networkmanager/berrycast-wifi-powersave.conf" 	"${ROOTFS_DIR}/etc/NetworkManager/conf.d/"
+
 # 3. Console : écran jamais éteint, curseur masqué, pas de messages du noyau ni de systemd
 #    (« [ OK ] Reached target… ») par-dessus l'écran BerryCast (seules les erreurs restent)
 sed -i '1 s/$/ consoleblank=0 loglevel=3 vt.global_cursor_default=0 systemd.show_status=error/' \
