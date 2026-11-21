@@ -59,6 +59,9 @@ install -m 644 "${SRC}"/system/dev/*.service "${SRC}"/system/dev/*.path /etc/sys
 install -d -m 755 /etc/polkit-1/rules.d
 install -m 644 "${SRC}/system/polkit/50-berrycast.rules" /etc/polkit-1/rules.d/
 usermod -a -G video,render,netdev,audio berrycast
+# Tampon de réception UDP pour la vidéo Miracast (appliqué tout de suite, sans couper le Wi-Fi)
+install -m 644 "${SRC}/system/sysctl/90-berrycast.conf" /etc/sysctl.d/
+sysctl -q -p /etc/sysctl.d/90-berrycast.conf || echo "   (tampon réseau : réglage pris en compte au prochain démarrage)"
 # Ancien réglage (groupes Wi-Fi Direct) devenu inutile avec MICE
 if [ -f /etc/NetworkManager/conf.d/berrycast-p2p.conf ]; then
 	rm -f /etc/NetworkManager/conf.d/berrycast-p2p.conf

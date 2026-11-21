@@ -115,6 +115,7 @@ class MiracastService:
             if not cast_state.wait_screen_free(SOURCE):
                 log.warning("AirPlay n'a pas libéré l'écran à temps : essai quand même")
             self.player.start(self.session.video_profile)
+            self.wait_player()
             playing.set()
             cast_state.write(SOURCE, "casting", peer=self.peer)
 
@@ -139,8 +140,17 @@ class MiracastService:
                     log.warning("Le lecteur s'est arrêté (%d fois) : relance%s", crashes,
                                 " en décodage logiciel" if software else "")
                     self.player.start(self.session.video_profile, software=software)
+                    self.wait_player()
                     self.session.schedule_idr()  # le nouveau lecteur a besoin d'une image complète
         log.info("Diffusion terminée : %s", self.session.reason)
+
+    def wait_player(self) -> None:
+        """Attend que le lecteur écoute avant que la vidéo parte (voir Player.wait_listening)."""
+        start = time.monotonic()
+        if self.player.wait_listening():
+            log.info("Lecteur à l'écoute après %.1f s", time.monotonic() - start)
+        else:
+            log.warning("Le lecteur n'écoute pas encore sur le port vidéo : on continue")
 
     # ---- Boucle -----------------------------------------------------------------------
 

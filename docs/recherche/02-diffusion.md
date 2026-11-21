@@ -71,3 +71,10 @@ iPhone diffuse → la demande MICE du PC est refusée. Choix : **refuser** (CLAU
 - **iPhone en paysage** : c'est la *hauteur* demandée par `-s` qui règle la taille ; avec
   1080, l'image en paysage faisait ~2340 de large (plus que l'écran) et le lecteur plantait.
   Le Pi demande `-s 1920x872` (écran 1920x1080) : l'image en paysage tient dans la largeur.
+- **Windows : « No valid frames found »** (h264parse ne reçoit que des morceaux d'image
+  « différentiels », jamais l'image complète avec ses réglages SPS/PPS). Deux causes
+  corrigées : le lecteur (1 à 2 s pour démarrer sur le Pi 3) n'écoutait pas encore quand
+  Windows commençait à envoyer (on attend maintenant que le port UDP 1028 soit ouvert
+  avant PLAY) ; et le tampon de réception UDP était limité à ~200 Ko
+  (`net.core.rmem_max`, porté à 8 Mo par `system/sysctl/90-berrycast.conf`). L'iPhone
+  n'a pas ce problème : AirPlay passe par TCP, qui renvoie les morceaux perdus.

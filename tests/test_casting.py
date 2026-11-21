@@ -3,6 +3,7 @@
 
 import socket
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -452,3 +453,40 @@ def test_display_size(tmp_path):
     (on / "modes").write_text("1280x720\n720x576\n")
     assert pipeline.display_size(tmp_path) == (1280, 720)
     assert pipeline.display_size(tmp_path / "absent") == (1920, 1080)
+
+
+UDP = """   sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid
+  512: 00000000:1B5B 00000000:0000 07 00000000:00000000 00:00000000 00000000   999        0 1 2 0
+  700: 00000000:0404 00000000:0000 07 00000000:00000000 00:00000000 00000000   999        0 1 2 0
+"""
+
+
+def test_udp_port_open():
+    assert pipeline.udp_port_open(1028, [UDP])  # 0x0404
+    assert pipeline.udp_port_open(7003, ["", UDP])  # 0x1B5B
+    assert not pipeline.udp_port_open(5000, [UDP])
+    assert not pipeline.udp_port_open(1028, [])
+
+
+def test_player_waits_until_listening():
+    now = [0.0]
+    tables = iter([[""], [""], [UDP]])
+    player = pipeline.Player()
+
+    def sleep(seconds):
+        now[0] += seconds
+
+    assert player.wait_listening(read_tables=lambda: next(tables), clock=lambda: now[0],
+                                 sleep=sleep)
+    assert abs(now[0] - 0.2) < 1e-9  # deux attentes de 0,1 s
+    now[0] = 0.0
+    assert not player.wait_listening(timeout=1, read_tables=lambda: [""],
+                                     clock=lambda: now[0], sleep=sleep)
+
+
+def test_udp_buffer_in_command():
+    text = " ".join(pipeline.build_command("v4l2h264dec", None))
+    assert f"buffer-size={4 * 1024 * 1024}" in text
+    conf = (Path(__file__).parent.parent / "system" / "sysctl" / "90-berrycast.conf").read_text(
+        encoding="utf-8")
+    assert "net.core.rmem_max = 8388608" in conf  # au moins le tampon demandé

@@ -19,6 +19,8 @@ import os
 import shlex
 import signal
 import subprocess
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 from berrycast import audio
@@ -32,6 +34,9 @@ HW_DECODER_DEVICE = Path("/dev/video10")  # décodeur H.264 matériel (bcm2835-c
 VIDEO_SINK = "kmssink sync=false can-scale=false"
 DRM_DIR = Path("/sys/class/drm")
 DEFAULT_DISPLAY = (1920, 1080)
+# Tampon de réception UDP (limité par net.core.rmem_max : system/sysctl/90-berrycast.conf)
+UDP_BUFFER_BYTES = 4 * 1024 * 1024
+UDP_TABLES = (Path("/proc/net/udp"), Path("/proc/net/udp6"))
 JITTER_LATENCY_MS = 150  # petit tampon : bon compromis fluidité / latence en Wi-Fi
 
 
@@ -96,6 +101,30 @@ def display_size(drm_dir: Path = DRM_DIR) -> tuple[int, int]:
     return DEFAULT_DISPLAY
 
 
+def udp_port_open(port: int, tables: list[str]) -> bool:
+    """Le port UDP est-il ouvert sur le Pi ? (contenu de /proc/net/udp et udp6)
+
+    Colonne 2 : « adresse:port » en hexadécimal, ex. « 00000000:0404 » = port 1028.
+    """
+    wanted = f"{port:04X}"
+    for text in tables:
+        for line in text.splitlines()[1:]:
+            fields = line.split()
+            if len(fields) > 1 and fields[1].rsplit(":", 1)[-1].upper() == wanted:
+                return True
+    return False
+
+
+def read_udp_tables() -> list[str]:
+    tables = []
+    for path in UDP_TABLES:
+        try:
+            tables.append(path.read_text())
+        except OSError:
+            pass
+    return tables
+
+
 def video_chain(decoder: str) -> str:
     """Décodage + conversion, comme UxPlay : matériel (v4l2) ou logiciel (Pi 5)."""
     if decoder == "v4l2h264dec":
@@ -109,7 +138,7 @@ def build_command(decoder: str, alsa_device: str | None, port: int = wfd.RTP_POR
     sink = video_sink or os.environ.get("BERRYCAST_VIDEO_SINK", VIDEO_SINK)
     audio_sink = "alsasink sync=false" + (f" device={alsa_device}" if alsa_device else "")
     description = (
-        f"udpsrc port={port} buffer-size=2097152 "
+        f"udpsrc port={port} buffer-size={UDP_BUFFER_BYTES} "
         "caps=\"application/x-rtp,media=video,clock-rate=90000,encoding-name=MP2T\" "
         f"! rtpjitterbuffer latency={JITTER_LATENCY_MS} ! rtpmp2tdepay "
         "! tsdemux name=demux "
@@ -141,6 +170,26 @@ class Player:
         # GST_DEBUG=2 : erreurs et avertissements de GStreamer dans le journal (diagnostic)
         env = dict(os.environ, GST_DEBUG=os.environ.get("GST_DEBUG", "2"))
         self.process = subprocess.Popen(cmd, start_new_session=True, env=env)
+
+    def wait_listening(self, port: int = wfd.RTP_PORT, timeout: float = 6.0,
+                       read_tables: Callable[[], list[str]] = read_udp_tables,
+                       clock: Callable[[], float] = time.monotonic,
+                       sleep: Callable[[float], None] = time.sleep) -> bool:
+        """Attend que le lecteur écoute sur le port de la vidéo.
+
+        Constaté sur le Pi 3 : gst-launch met 1 à 2 s à démarrer. Si la source commence à
+        envoyer avant, la première image complète (avec les réglages SPS/PPS) est perdue,
+        et rien ne peut être décodé ensuite. Une fois le port ouvert, le système garde les
+        paquets en attente même si le lecteur n'est pas tout à fait prêt.
+        """
+        deadline = clock() + timeout
+        while clock() < deadline:
+            if udp_port_open(port, read_tables()):
+                return True
+            if self.process is not None and self.process.poll() is not None:
+                return False  # le lecteur s'est arrêté
+            sleep(0.1)
+        return False
 
     def running(self) -> bool:
         return self.process is not None and self.process.poll() is None

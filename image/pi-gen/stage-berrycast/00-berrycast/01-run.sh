@@ -21,6 +21,10 @@ install -m 644 "${SRC}"/system/dev/*.service "${SRC}"/system/dev/*.path 	"${ROOT
 install -d -m 755 "${ROOTFS_DIR}/etc/polkit-1/rules.d"
 install -m 644 "${SRC}/system/polkit/50-berrycast.rules" "${ROOTFS_DIR}/etc/polkit-1/rules.d/"
 
+# Tampon de réception UDP pour la vidéo Miracast (lu par systemd-sysctl au démarrage)
+install -d -m 755 "${ROOTFS_DIR}/etc/sysctl.d"
+install -m 644 "${SRC}/system/sysctl/90-berrycast.conf" "${ROOTFS_DIR}/etc/sysctl.d/"
+
 # 3. Console : écran jamais éteint, curseur masqué, pas de messages du noyau ni de systemd
 #    (« [ OK ] Reached target… ») par-dessus l'écran BerryCast (seules les erreurs restent)
 sed -i '1 s/$/ consoleblank=0 loglevel=3 vt.global_cursor_default=0 systemd.show_status=error/' \
