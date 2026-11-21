@@ -1,0 +1,34 @@
+# AirPlay (« Recopie de l'écran » iPhone / iPad / Mac) : UxPlay avec code PIN.
+#
+# Droits : utilisateur « berrycast » (pas root) ; groupes video, render (écran) et
+# audio (son). Le code PIN et les clés d'UxPlay sont gardés dans /var/lib/berrycast-airplay.
+
+[Unit]
+Description=BerryCast : AirPlay (Recopie de l'écran)
+After=network-online.target avahi-daemon.service berrycast-devsetup.service
+Wants=network-online.target avahi-daemon.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=berrycast
+Group=berrycast
+SupplementaryGroups=video render audio
+WorkingDirectory=/opt/berrycast
+Environment=PYTHONPATH=/opt/berrycast
+Environment=PYTHONUNBUFFERED=1
+StateDirectory=berrycast-airplay
+StateDirectoryMode=0700
+Environment=HOME=/var/lib/berrycast-airplay
+RuntimeDirectory=berrycast
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/bin/python3 -m berrycast.airplay.service
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
