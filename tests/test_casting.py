@@ -237,6 +237,7 @@ def test_uxplay_command():
     cmd = airplay.build_command("TV Salon", "4821", "plughw:CARD=vc4hdmi,DEV=0", "v4l2h264dec")
     assert cmd[:5] == ["uxplay", "-n", "TV Salon", "-nh", "-pin"] and cmd[5] == "4821"
     assert "-p" in cmd and "-bt709" in cmd and "-avdec" not in cmd
+    assert cmd[cmd.index("-vsync") + 1] == "no"
     assert cmd[cmd.index("-vs") + 1].startswith("kmssink")
     assert "-avdec" in airplay.build_command("X", "1111", None, "avdec_h264")
 
