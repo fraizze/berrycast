@@ -158,7 +158,7 @@ def apply(req: dict) -> dict:
     if country:
         try:
             devsetup.apply_country(country)
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, OSError, devsetup.CmdlineError):
             warnings.append("country_refused")
             devsetup.apply_world_regdomain()
     else:

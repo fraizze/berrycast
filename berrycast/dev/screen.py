@@ -23,7 +23,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from berrycast.countries import WORLD_REGDOMAIN
+from berrycast.countries import WORLD_REGDOMAIN, parse_iw_reg_get
 from berrycast.dev.nm import split_terse
 
 TTY = os.environ.get("BERRYCAST_TTY")  # None = sortie standard (cas normal)
@@ -86,7 +86,7 @@ def gather() -> Info:
     try:
         state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
         info.ssh_password_set = state.get("ssh_password_set")
-        info.regdomain = state.get("regdomain")
+        info.regdomain = live_regdomain() or state.get("regdomain")
         info.messages = state.get("messages", [])
         info.errors = state.get("errors", [])
     except (OSError, ValueError):
@@ -101,6 +101,17 @@ def gather() -> Info:
         pass
 
     return info
+
+
+def live_regdomain() -> str | None:
+    """Pays Wi-Fi appliqué EN CE MOMENT (il peut changer après le démarrage : réglage
+    enregistré, ou pays annoncé par la box Wi-Fi). Lecture sans droits particuliers."""
+    try:
+        out = subprocess.run(["/usr/sbin/iw", "reg", "get"], capture_output=True, text=True,
+                             timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return parse_iw_reg_get(out)
 
 
 WIFI_STATES = {

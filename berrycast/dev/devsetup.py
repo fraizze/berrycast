@@ -50,20 +50,94 @@ CMDLINE = BOOT_DIR / "cmdline.txt"
 REGDOM_PARAM = "cfg80211.ieee80211_regdom="
 
 
+PROC_CMDLINE = Path("/proc/cmdline")
+# Réglages ajoutés par le micrologiciel du Pi devant cmdline.txt (visibles dans /proc/cmdline)
+FIRMWARE_PREFIXES = ("coherent_pool=", "8250.nr_uarts=", "snd_bcm2835.", "vc_mem.",
+                     "cgroup_disable=", "bcm2708_fb.", "smsc95xx.", "video=", "dwc_otg.")
+
+
+class CmdlineError(ValueError):
+    """cmdline.txt illisible ou contenu refusé (on ne l'écrit jamais dans ce cas)."""
+
+
+def read_cmdline() -> list[str]:
+    """Mots de cmdline.txt. Lève CmdlineError s'il est vide ou sans « root= » (abîmé)."""
+    try:
+        words = CMDLINE.read_text(encoding="utf-8").split()
+    except OSError as exc:
+        raise CmdlineError(f"cmdline.txt illisible : {exc}") from exc
+    if not any(w.startswith("root=") for w in words):
+        raise CmdlineError("cmdline.txt vide ou abîmé (pas de « root= »)")
+    return words
+
+
+def write_cmdline(words: list[str]) -> None:
+    """Écrit cmdline.txt de façon sûre : jamais vide, toujours avec « root= », écriture
+    atomique et forcée sur la carte (une coupure de courant ne doit pas l'abîmer)."""
+    if not any(w.startswith("root=") for w in words):
+        raise CmdlineError("refus d'écrire un cmdline.txt sans « root= »")
+    write_boot_file(CMDLINE, " ".join(words) + "\n")
+    if read_cmdline() != words:  # relecture de contrôle
+        raise CmdlineError("cmdline.txt : la relecture ne correspond pas")
+
+
+def with_regdomain(words: list[str], country: str | None) -> list[str]:
+    """Mots de cmdline.txt avec le pays Wi-Fi demandé (None = aucun = international)."""
+    kept = [w for w in words if not w.startswith(REGDOM_PARAM)]
+    return kept + ([REGDOM_PARAM + country] if country else [])
+
+
+def rebuild_from_proc(proc_cmdline: str) -> list[str]:
+    """Reconstitue cmdline.txt à partir de /proc/cmdline (réglages du démarrage en cours).
+
+    Le micrologiciel ajoute ses propres réglages devant ceux de cmdline.txt et remplace
+    « serial0 » par le vrai nom du port série : on retire les premiers, on remet le second.
+    """
+    words = [w for w in proc_cmdline.split() if not w.startswith(FIRMWARE_PREFIXES)]
+    fixed = []
+    for w in words:
+        for port in ("ttyS0", "ttyAMA0"):
+            if w.startswith(f"console={port},"):
+                w = "console=serial0," + w.split(",", 1)[1]
+        fixed.append(w)
+    return fixed
+
+
+def repair_cmdline() -> str | None:
+    """Au démarrage : si cmdline.txt est vide ou abîmé, le reconstruire. Renvoie un message."""
+    try:
+        read_cmdline()
+        return None
+    except CmdlineError as problem:
+        try:
+            words = rebuild_from_proc(PROC_CMDLINE.read_text(encoding="utf-8"))
+            write_cmdline(words)
+        except (OSError, CmdlineError) as exc:
+            log.error("cmdline.txt abîmé et non réparé : %s (%s)", problem, exc)
+            return f"cmdline.txt abîmé, réparation impossible : {exc}"
+        log.warning("cmdline.txt réparé (%s)", problem)
+        return "cmdline.txt était abîmé : réparé automatiquement"
+
+
 def apply_country(country: str) -> None:
-    """Règle le pays Wi-Fi avec l'outil officiel (il l'écrit aussi dans cmdline.txt)."""
-    run(["raspi-config", "nonint", "do_wifi_country", country])
+    """Règle le pays Wi-Fi : enregistré dans cmdline.txt (pour les prochains démarrages)
+    et appliqué tout de suite. Même effet que « raspi-config nonint do_wifi_country »,
+    mais avec une écriture sûre (constaté sur le Pi : cmdline.txt vidé après une coupure)."""
+    code = countries.normalize_country(country)
+    if code is None:
+        raise CmdlineError(f"pays invalide : {country!r}")
+    write_cmdline(with_regdomain(read_cmdline(), code))
+    run(["iw", "reg", "set", code], check=False)
 
 
 def apply_world_regdomain() -> None:
     """Réglage Wi-Fi international « 00 » : retire le pays de cmdline.txt et l'applique."""
     try:
-        text = CMDLINE.read_text(encoding="utf-8")
-        words = text.split()
-        kept = [w for w in words if not w.startswith(REGDOM_PARAM)]
-        if kept != words:
-            write_boot_file(CMDLINE, " ".join(kept) + "\n")
-    except OSError as exc:
+        words = read_cmdline()
+        new_words = with_regdomain(words, None)
+        if new_words != words:
+            write_cmdline(new_words)
+    except (OSError, CmdlineError) as exc:
         log.warning("cmdline.txt non modifié : %s", exc)
     run(["iw", "reg", "set", countries.WORLD_REGDOMAIN], check=False)
 
@@ -211,7 +285,7 @@ def apply_file(path: Path) -> tuple[list[str], list[str], list[str]]:
         try:
             apply_country(settings.country)
             messages.append(f"Pays Wi-Fi : {settings.country}")
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, OSError, CmdlineError):
             warnings.append(
                 f"pays « {settings.country} » refusé par le système : "
                 "réglage Wi-Fi international utilisé"
@@ -263,6 +337,10 @@ def main() -> int:
     path = BOOT_DIR / wifi_file.FILE_NAME
     state = load_state()
 
+    # D'abord : cmdline.txt abîmé (ex. coupure de courant pendant une écriture) ?
+    # Sans réparation, le prochain démarrage échouerait.
+    repaired = repair_cmdline()
+
     if not path.exists():
         # Fichier supprimé : on remet un modèle vide pour pouvoir le remplir plus tard.
         write_boot_file(path, wifi_file.render())
@@ -285,6 +363,9 @@ def main() -> int:
 
     # À chaque démarrage : radio Wi-Fi activée (même sans pays : réglage international),
     # puis on note l'état réel pour l'écran HDMI.
+    if repaired:
+        key = "errors" if "impossible" in repaired else "warnings"
+        state[key] = list(state.get(key, [])) + [repaired]
     enable_wifi_radio()
     state["regdomain"] = current_regdomain()
     state["ssh_password_set"] = ssh_password_is_set()

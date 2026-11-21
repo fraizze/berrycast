@@ -140,3 +140,72 @@ def test_world_regdomain_removes_country_from_cmdline(tmp_path, monkeypatch):
 
     assert cmdline.read_text(encoding="utf-8") == "console=tty1 root=PARTUUID=1 rootwait quiet\n"
     assert ["iw", "reg", "set", "00"] in commands
+
+
+# --- cmdline.txt : écriture sûre et réparation ----------------------------------
+
+# /proc/cmdline réel d'un Pi 3 B (le micrologiciel ajoute ses réglages devant)
+PROC = ("coherent_pool=1M 8250.nr_uarts=0 snd_bcm2835.enable_headphones=0 cgroup_disable=memory "
+        "snd_bcm2835.enable_headphones=1 snd_bcm2835.enable_hdmi=1 snd_bcm2835.enable_hdmi=0  "
+        "vc_mem.mem_base=0x3ec00000 vc_mem.mem_size=0x40000000  console=ttyS0,115200 "
+        "console=tty1 root=PARTUUID=94365b44-02 rootfstype=ext4 fsck.repair=yes rootwait "
+        "consoleblank=0 loglevel=3 vt.global_cursor_default=0")
+
+
+def test_rebuild_from_proc_cmdline():
+    assert devsetup.rebuild_from_proc(PROC) == [
+        "console=serial0,115200", "console=tty1", "root=PARTUUID=94365b44-02",
+        "rootfstype=ext4", "fsck.repair=yes", "rootwait", "consoleblank=0", "loglevel=3",
+        "vt.global_cursor_default=0",
+    ]
+
+
+@pytest.fixture
+def boot(tmp_path, monkeypatch):
+    cmdline = tmp_path / "cmdline.txt"
+    proc = tmp_path / "proc_cmdline"
+    proc.write_text(PROC + "\n", encoding="utf-8")
+    monkeypatch.setattr(devsetup, "CMDLINE", cmdline)
+    monkeypatch.setattr(devsetup, "PROC_CMDLINE", proc)
+    commands = []
+    monkeypatch.setattr(devsetup, "run", lambda cmd, **kw: commands.append(cmd))
+    return cmdline, commands
+
+
+def test_repair_empty_cmdline(boot):
+    cmdline, _ = boot
+    cmdline.write_bytes(b"")  # constaté sur le Pi : 0 octet
+    message = devsetup.repair_cmdline()
+    assert message and "réparé" in message
+    text = cmdline.read_text(encoding="utf-8")
+    assert text.startswith("console=serial0,115200 console=tty1 root=PARTUUID=94365b44-02")
+    assert text.endswith("\n")
+    assert devsetup.repair_cmdline() is None  # sain : rien à faire
+
+
+def test_write_cmdline_refuses_without_root(boot):
+    cmdline, _ = boot
+    cmdline.write_text("console=tty1 root=PARTUUID=1 rootwait\n", encoding="utf-8")
+    with pytest.raises(devsetup.CmdlineError):
+        devsetup.write_cmdline(["console=tty1", "rootwait"])
+    assert "root=" in cmdline.read_text(encoding="utf-8")  # fichier intact
+
+
+def test_apply_country_writes_cmdline_and_applies(boot):
+    cmdline, commands = boot
+    cmdline.write_text("console=tty1 root=PARTUUID=1 rootwait cfg80211.ieee80211_regdom=FR\n",
+                       encoding="utf-8")
+    devsetup.apply_country("ch")
+    assert cmdline.read_text(encoding="utf-8") == (
+        "console=tty1 root=PARTUUID=1 rootwait cfg80211.ieee80211_regdom=CH\n")
+    assert ["iw", "reg", "set", "CH"] in commands
+
+
+def test_apply_country_on_broken_cmdline_raises_and_does_not_write(boot):
+    cmdline, _ = boot
+    cmdline.write_bytes(b"")
+    with pytest.raises(devsetup.CmdlineError):
+        devsetup.apply_country("CH")
+    assert cmdline.read_bytes() == b""  # la réparation, c'est repair_cmdline au démarrage
+    with pytest.raises(devsetup.CmdlineError):
+        devsetup.apply_country("ZZ")
