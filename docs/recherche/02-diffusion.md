@@ -86,3 +86,8 @@ iPhone diffuse → la demande MICE du PC est refusée. Choix : **refuser** (CLAU
   Chaîne Windows : `v4l2h264dec ! queue leaky ! v4l2convert ! kmssink`. La file
   « leaky » saute des images décodées si l'affichage prend du retard, au lieu de les
   empiler. `gst-launch -v` écrit les formats négociés dans le journal.
+- **Image Windows en 1920x988 (bandes noires).** La TV annonce des dimensions physiques
+  qui donnent à kmssink des pixels « non carrés » (54/59) ; v4l2convert gardait alors les
+  proportions en réduisant la hauteur. Un `capsfilter` impose la taille exacte de l'écran
+  (lue dans `/sys/class/drm`) : image plein écran. Résultat mesuré avant ce réglage :
+  ~1 s de retard (au lieu de ~20 s).

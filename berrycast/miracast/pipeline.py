@@ -13,7 +13,8 @@ processeur. Constaté sur le Pi 3 : avec « videoscale » (processeur), chaque i
 était recalculée (kmssink can-scale=false n'accepte que la taille ET la forme de pixel
 exactes de l'écran, calculée d'après ses dimensions physiques) : trop lent, les images
 s'accumulaient (~20 s de retard). v4l2convert sait produire exactement ce format.
-  h264parse ! v4l2h264dec ! queue (perte des images en trop) ! v4l2convert ! kmssink
+  h264parse ! v4l2h264dec ! queue (perte des images en trop) ! v4l2convert
+    ! capsfilter (taille exacte de l'écran) ! kmssink
 """
 
 from __future__ import annotations
@@ -142,14 +143,35 @@ def has_hw_converter(model: str | None = None, device_exists: bool | None = None
     return device_exists and "Raspberry Pi 5" not in model
 
 
-def video_chain(decoder: str, hw_convert: bool = True) -> str:
-    """Décodage puis mise au format de l'écran (par la puce si possible)."""
-    convert = "v4l2convert" if hw_convert else "videoconvert ! videoscale"
-    return f"{decoder} ! {DROP_LATE_FRAMES} ! {convert}"
+def screen_caps(display: tuple[int, int], dmabuf: bool) -> str:
+    """Filtre imposant la taille exacte de l'écran (image plein écran).
+
+    Constaté sur le Pi 3 : la TV annonce des dimensions physiques qui font croire à
+    kmssink que ses pixels ne sont pas carrés (« pixel-aspect-ratio 54/59 ») ; pour
+    garder les proportions, l'image sortait en 1920x988 avec des bandes noires. On impose
+    donc la taille de l'écran (les pixels de la TV sont en réalité carrés).
+    Guillemets : gst-launch lit la liste des formats (séparés par « ; ») en un seul bloc.
+    """
+    w, h = display
+    plain = f"video/x-raw,width={w},height={h}"
+    caps = f"video/x-raw(memory:DMABuf),width={w},height={h};{plain}" if dmabuf else plain
+    # Apostrophes : retirées par shlex.split, elles gardent les guillemets pour gst-launch
+    return f"""capsfilter caps='"{caps}"'"""
+
+
+def video_chain(decoder: str, hw_convert: bool = True,
+                display: tuple[int, int] = DEFAULT_DISPLAY) -> str:
+    """Décodage puis mise au format exact de l'écran (par la puce si possible)."""
+    if hw_convert:
+        convert = "v4l2convert"  # échelle sans garder de bandes : remplit l'écran
+    else:
+        convert = "videoconvert ! videoscale add-borders=false"
+    return f"{decoder} ! {DROP_LATE_FRAMES} ! {convert} ! {screen_caps(display, hw_convert)}"
 
 
 def build_command(decoder: str, alsa_device: str | None, port: int = wfd.RTP_PORT,
-                  video_sink: str | None = None, hw_convert: bool = True) -> list[str]:
+                  video_sink: str | None = None, hw_convert: bool = True,
+                  display: tuple[int, int] = DEFAULT_DISPLAY) -> list[str]:
     """Arguments de gst-launch-1.0 (liste : pas de shell, pas d'injection possible)."""
     sink = video_sink or os.environ.get("BERRYCAST_VIDEO_SINK", VIDEO_SINK)
     audio_sink = "alsasink sync=false" + (f" device={alsa_device}" if alsa_device else "")
@@ -159,7 +181,7 @@ def build_command(decoder: str, alsa_device: str | None, port: int = wfd.RTP_POR
         f"! rtpjitterbuffer latency={JITTER_LATENCY_MS} ! rtpmp2tdepay "
         "! tsdemux name=demux "
         f"demux. ! queue max-size-time=0 max-size-buffers=0 ! h264parse "
-        f"! {video_chain(decoder, hw_convert)} ! {sink} "
+        f"! {video_chain(decoder, hw_convert, display)} ! {sink} "
         "demux. ! queue max-size-time=0 max-size-buffers=0 ! aacparse ! avdec_aac "
         f"! audioconvert ! audioresample ! {audio_sink}"
     )
@@ -183,7 +205,7 @@ class Player:
         if profile is not None:
             log.info("Profil H.264 choisi par la source : 0x%02X -> décodeur %s", profile, decoder)
         cmd = build_command(decoder, audio.alsa_device(self.audio_output),
-                            hw_convert=has_hw_converter())
+                            hw_convert=has_hw_converter(), display=display_size())
         log.info("Lecteur : %s", " ".join(cmd))
         # Nouveau groupe de processus : on pourra tout arrêter d'un coup
         # GST_DEBUG=2 : erreurs et avertissements de GStreamer dans le journal (diagnostic)

@@ -204,16 +204,23 @@ def test_pipeline_command():
     assert "caps=application/x-rtp,media=video,clock-rate=90000,encoding-name=MP2T" in cmd
     # Mise à l'échelle par la puce (v4l2convert), jamais par le processeur (videoscale)
     drop = "queue leaky=downstream max-size-buffers=2 max-size-bytes=0 max-size-time=0"
-    assert (f"! h264parse ! v4l2h264dec ! {drop} ! v4l2convert "
+    full = ('capsfilter caps="video/x-raw(memory:DMABuf),width=1920,height=1080;'
+            'video/x-raw,width=1920,height=1080"')
+    assert (f"! h264parse ! v4l2h264dec ! {drop} ! v4l2convert ! {full} "
             "! kmssink sync=false can-scale=false" in text)
+    # Un seul argument pour gst-launch, guillemets compris (liste de formats « ; »)
+    assert full.split(" ", 1)[1] in cmd
     assert "videoscale" not in text
     assert "device=plughw:CARD=vc4hdmi,DEV=0" in text and "avdec_aac" in text
     # Secours (profil refusé par le décodeur) : décodage logiciel, conversion par la puce
     soft = " ".join(pipeline.build_command("avdec_h264", None))
-    assert f"! h264parse ! avdec_h264 ! {drop} ! v4l2convert ! kmssink" in soft
+    assert f"! h264parse ! avdec_h264 ! {drop} ! v4l2convert ! {full} ! kmssink" in soft
     # Pi 5 : ni décodeur ni convertisseur matériels
     pi5 = " ".join(pipeline.build_command("avdec_h264", None, hw_convert=False))
-    assert "! avdec_h264 ! " + drop + " ! videoconvert ! videoscale ! kmssink" in pi5
+    assert ("! avdec_h264 ! " + drop + " ! videoconvert ! videoscale add-borders=false "
+            '! capsfilter caps="video/x-raw,width=1920,height=1080" ! kmssink') in pi5
+    small = " ".join(pipeline.build_command("v4l2h264dec", None, display=(1280, 720)))
+    assert "width=1280,height=720" in small and "1920" not in small
 
 
 def test_hw_converter():
