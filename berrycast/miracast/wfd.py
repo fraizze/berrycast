@@ -38,9 +38,10 @@ AUDIO_CODECS = "AAC 00000001 00"
 # « constrained-high » que Windows envoyait). Niveau 4.1 (0x08).
 # Modes CEA (bits) : 0 = 640x480p60 (obligatoire), 5 = 1280x720p30, 6 = 1280x720p60,
 # 7 = 1920x1080p30 ; seulement ceux qui tiennent dans l'écran.
-# Constaté avec Windows 11 : 1920x1080p30 accepté, mais avec seulement 1280x720p30 il
-# choisissait 640x480p60 (il ne semble pas produire de 720p à 30 images/s) : on propose
-# aussi 1280x720p60 (accepté par le décodeur du Pi 3 au niveau 4.1).
+# Constaté avec Windows 11 (choix de la source selon le masque et le mode « natif ») :
+#   masque 0x21 (640x480p60 + 720p30), natif 720p30 (28) -> 640x480p60 (image floue) ;
+#   masque 0x61 (+ 720p60),             natif 720p60 (30) -> 1280x720p30 (bon résultat).
+# On garde donc 1280x720p60 dans la liste (accepté par le décodeur du Pi 3, niveau 4.1).
 CEA_640x480P60, CEA_1280x720P30, CEA_1280x720P60, CEA_1920x1080P30 = (
     1 << 0, 1 << 5, 1 << 6, 1 << 7)
 PROFILE_CBP = "01"

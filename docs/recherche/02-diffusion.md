@@ -103,9 +103,9 @@ iPhone diffuse → la demande MICE du PC est refusée. Choix : **refuser** (CLAU
   envoyait du 640x480 (4:3), agrandi et étiré en 16:9. On annonce maintenant le meilleur
   mode proposé (`28` = 1280x720p30 sur Pi 3, `38` = 1920x1080p30 sur Pi 4/5). Le mode
   choisi par Windows est écrit au journal (« Mode vidéo choisi par la source »).
-- **Windows choisissait 640x480p60** même avec 1280x720p30 annoncé comme natif (alors
-  qu'il prenait 1920x1080p30 quand on le proposait) : il ne semble pas produire de 720p à
-  30 images/s. On propose aussi 1280x720p60 (natif `30`), accepté par le décodeur du Pi 3.
+- **Windows choisissait 640x480p60** avec le masque `00000021` (640x480p60 + 720p30) et
+  le natif `28` (720p30). Avec le masque `00000061` (+ 720p60) et le natif `30` (720p60),
+  il choisit **1280x720p30** : image nette, fluide (constaté, Windows 11, Pi 3 B).
 - **Couleurs qui bavent et gels, même en 640x480** (peu de données) : `rtpjitterbuffer`
   jetait les paquets arrivés plus de 150 ms après l'heure prévue (Wi-Fi du Pi en économie
   d'énergie : paquets livrés par paquets groupés). Retiré : en Wi-Fi direct les paquets
