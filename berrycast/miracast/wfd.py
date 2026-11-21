@@ -29,10 +29,13 @@ WFD_IES = bytes.fromhex("000006" "0011" "1c44" "012c"
 PRIMARY_DEVICE_TYPE_TV = bytes.fromhex("0007" "0050f204" "0001")
 
 # --- Capacités annoncées (réponse à M3) ---------------------------------------------
-# AAC 2 canaux 48 kHz (décodé par GStreamer). Vidéo H.264 « Constrained High » jusqu'au
-# 1080p30 (le 1080p60 est exclu : trop lourd pour un Pi 3). Chaînes de lazycast.
+# AAC 2 canaux 48 kHz (décodé par GStreamer).
+# Vidéo H.264 « Constrained High », niveau 4.1 (0x08), modes CEA 640x480p60 (bit 0,
+# obligatoire), 1280x720p30 (bit 5) et 1920x1080p30 (bit 7) = 0x000000A1, aucun mode VESA
+# ni HH. Constaté sur le Pi : avec les valeurs de lazycast (tous les modes, niveau 4.2),
+# Windows choisissait 1024x768 à 60 i/s niveau 4.2, refusé par le décodeur du Pi 3.
 AUDIO_CODECS = "AAC 00000001 00"
-VIDEO_FORMATS = "00 00 02 10 0001FEFF 3FFFFFFF 00000FFF 00 0000 0000 00 none none"
+VIDEO_FORMATS = "00 00 02 08 000000A1 00000000 00000000 00 0000 0000 00 none none"
 
 
 def wps_checksum(pin7: int) -> int:

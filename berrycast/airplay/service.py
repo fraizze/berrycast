@@ -71,7 +71,10 @@ def build_command(device_name: str, pin: str, alsa_device: str | None,
     if decoder == "avdec_h264":
         cmd.append("-avdec")  # Pi 5 / pas de décodeur matériel
     else:
-        cmd.append("-bt709")  # nécessaire avec le décodeur matériel (doc UxPlay)
+        # Constaté sur le Pi : forte latence. UxPlay convertit l'image avec « videoconvert »
+        # (processeur) : sur Raspberry Pi, sa doc conseille le décodeur et le convertisseur
+        # matériels (v4l2h264dec, v4l2convert). -bt709 : nécessaire avec le décodeur matériel.
+        cmd += ["-vd", "v4l2h264dec", "-vc", "v4l2convert", "-bt709"]
     return cmd
 
 

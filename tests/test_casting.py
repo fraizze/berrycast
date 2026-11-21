@@ -201,7 +201,7 @@ def test_pipeline_command():
     assert cmd[:3] == ["gst-launch-1.0", "-q", "-e"]
     assert "udpsrc" in cmd and "port=1028" in cmd
     assert "caps=application/x-rtp,media=video,clock-rate=90000,encoding-name=MP2T" in cmd
-    assert "! h264parse ! v4l2h264dec !" in text
+    assert "! capssetter caps=video/x-h264,profile=(string)high ! v4l2h264dec !" in text
     assert "kmssink sync=false can-scale=false" in text
     assert "device=plughw:CARD=vc4hdmi,DEV=0" in text and "avdec_aac" in text
 
@@ -233,6 +233,8 @@ def test_uxplay_command():
     assert cmd[:3] == ["stdbuf", "-oL", "-eL"]  # messages d'UxPlay en direct
     assert cmd[3:8] == ["uxplay", "-n", "TV Salon", "-nh", "-pin"] and cmd[8] == "4821"
     assert "-p" in cmd and "-bt709" in cmd and "-avdec" not in cmd
+    assert cmd[cmd.index("-vd") + 1] == "v4l2h264dec"
+    assert cmd[cmd.index("-vc") + 1] == "v4l2convert"
     assert cmd[cmd.index("-vsync") + 1] == "no"
     assert cmd[cmd.index("-vs") + 1].startswith("kmssink")
     assert "-avdec" in airplay.build_command("X", "1111", None, "avdec_h264")
@@ -394,3 +396,10 @@ def test_idr_requested_again_while_player_starts():
     assert sent == [0.0, 2.0, 3.0, 6.0, 9.0]  # prévues à 0 ; 1,5 ; 3 ; 5 ; 8 s
     sink_sock.close()
     source_sock.close()
+
+
+def test_video_formats_limited_to_30fps_level_41():
+    fields = wfd.VIDEO_FORMATS.split()
+    assert fields[2] == "02" and fields[3] == "08"  # Constrained High, niveau 4.1
+    assert int(fields[4], 16) == (1 << 0) | (1 << 5) | (1 << 7)  # 640x480p60, 720p30, 1080p30
+    assert fields[5] == "00000000" and fields[6] == "00000000"  # ni VESA ni HH

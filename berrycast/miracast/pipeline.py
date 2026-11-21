@@ -27,6 +27,9 @@ HW_DECODER_DEVICE = Path("/dev/video10")  # décodeur H.264 matériel (bcm2835-c
 # can-scale=false : constaté sur le Pi 3, kmssink échoue en agrandissant l'image
 # (« drmModeSetPlane failed: No space left on device ») : image affichée à sa taille réelle.
 VIDEO_SINK = "kmssink sync=false can-scale=false"
+# Constaté sur le Pi : v4l2h264dec refuse « profile=constrained-high » (le pilote ne connaît
+# que « high ») ; Constrained High est un sous-ensemble de High : on le présente comme tel.
+PROFILE_FIX = "! capssetter caps=\"video/x-h264,profile=(string)high\" "
 JITTER_LATENCY_MS = 150  # petit tampon : bon compromis fluidité / latence en Wi-Fi
 
 
@@ -57,7 +60,7 @@ def build_command(decoder: str, alsa_device: str | None, port: int = wfd.RTP_POR
         "caps=\"application/x-rtp,media=video,clock-rate=90000,encoding-name=MP2T\" "
         f"! rtpjitterbuffer latency={JITTER_LATENCY_MS} ! rtpmp2tdepay "
         "! tsdemux name=demux "
-        f"demux. ! queue max-size-time=0 max-size-buffers=0 ! h264parse ! {decoder} "
+        f"demux. ! queue max-size-time=0 max-size-buffers=0 ! h264parse {PROFILE_FIX}! {decoder} "
         f"! queue leaky=downstream max-size-buffers=3 ! {sink} "
         "demux. ! queue max-size-time=0 max-size-buffers=0 ! aacparse ! avdec_aac "
         f"! audioconvert ! audioresample ! {audio_sink}"
