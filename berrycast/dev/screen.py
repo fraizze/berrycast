@@ -184,8 +184,9 @@ def cast_lines(info: Info) -> list[str]:
     air = info.casts.get("airplay", {})
     lines = []
     if mira.get("state") in ("ready", "pin", "connecting"):
-        lines += ["", f"PC Windows : touches Windows + K, puis « {info.device_name} »",
-                  f"   code : {mira.get('pin', '')}"]
+        lines += ["", f"PC Windows (même Wi-Fi) : Windows + K, puis « {info.device_name} »"]
+        if mira.get("pin"):
+            lines.append(f"   code : {mira['pin']}")
     if air.get("state") in ("ready", "pin", "connecting"):
         lines += ["", f"iPhone / iPad / Mac : « Recopie de l'écran », puis « {info.device_name} »",
                   f"   code (1re fois) : {air.get('pin', '')}"]

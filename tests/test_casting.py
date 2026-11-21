@@ -12,7 +12,7 @@ from berrycast.dev.screen import Info, is_casting, pin_lines, pin_request, rende
 from berrycast.display import bigdigits
 from berrycast.miracast import pipeline, wfd
 from berrycast.miracast.rtsp_sink import RtspSink
-from berrycast.miracast.service import dhcp_command
+from berrycast.miracast.service import parse_ipv4
 
 # --- WFD -------------------------------------------------------------------------
 
@@ -218,12 +218,6 @@ def test_alsa_device():
     assert audio.alsa_device("hdmi", "") is None
 
 
-def test_dhcp_command():
-    cmd = dhcp_command("p2p-wlan0-0")
-    assert "--interface=p2p-wlan0-0" in cmd and "--port=0" in cmd
-    assert "--dhcp-range=192.168.173.80,192.168.173.80,255.255.255.0,1h" in cmd
-
-
 # --- AirPlay ---------------------------------------------------------------------
 
 
@@ -235,7 +229,8 @@ def test_airplay_pin_is_created_once(tmp_path):
 
 def test_uxplay_command():
     cmd = airplay.build_command("TV Salon", "4821", "plughw:CARD=vc4hdmi,DEV=0", "v4l2h264dec")
-    assert cmd[:5] == ["uxplay", "-n", "TV Salon", "-nh", "-pin"] and cmd[5] == "4821"
+    assert cmd[:3] == ["stdbuf", "-oL", "-eL"]  # messages d'UxPlay en direct
+    assert cmd[3:8] == ["uxplay", "-n", "TV Salon", "-nh", "-pin"] and cmd[8] == "4821"
     assert "-p" in cmd and "-bt709" in cmd and "-avdec" not in cmd
     assert cmd[cmd.index("-vsync") + 1] == "no"
     assert cmd[cmd.index("-vs") + 1].startswith("kmssink")
@@ -300,80 +295,65 @@ def test_screen_shows_codes_and_pin_request():
     assert not is_casting(casts)
 
 
-# --- Wi-Fi Direct : retrouver le groupe (constaté sur le Pi : absent d'« Interfaces ») -----
+# --- Miracast over Infrastructure (MS-MICE) --------------------------------------------
 
 
-class FakeDBusException(Exception):
-    def get_dbus_message(self):
-        return str(self)
+def test_vendor_extension_matches_lazycast_format():
+    from berrycast.miracast import mice
+
+    ext = mice.vendor_extension("berrycast", "192.168.1.20")
+    # lazycast : '0001372001000105' + '2002' + longueur + nom + '2005' + longueur + IP
+    expected = ("000137" "2001" "0001" "05"
+                "2002" "0009" + b"berrycast".hex()
+                + "2005" "000c" + b"192.168.1.20".hex())
+    assert ext.hex() == expected
+    assert mice.vendor_extension("berrycast", None).hex().endswith(b"berrycast".hex())
 
 
-class FakeDbusModule:
-    DBusException = FakeDBusException
+def test_mice_parser():
+    from berrycast.miracast import mice
+
+    name = "PC-Salon".encode("utf-16-le")
+    msg = mice.build_message(1, [(0, name), (2, (7236).to_bytes(2, "big"))])
+    parser = mice.MiceParser()
+    out = parser.feed(msg[:5]) + parser.feed(msg[5:] + mice.build_message(2))
+    assert [m.command for m in out] == ["SOURCE_READY", "STOP_PROJECTION"]
+    assert out[0].rtsp_port == 7236 and out[0].friendly_name == "PC-Salon"
 
 
-class FakeWpa:
-    def __init__(self, known):
-        self.known = known  # noms que GetInterface connaît
+def test_mice_server_end_to_end():
+    import socket as sk
 
-    def GetInterface(self, name, dbus_interface=None):  # noqa: N802 (nom de l'API D-Bus)
-        if name in self.known:
-            return f"/fi/w1/wpa_supplicant1/Interfaces/{name}"
-        raise FakeDBusException("fi.w1.wpa_supplicant1.InterfaceUnknown")
+    from berrycast.miracast import mice
 
-    def Get(self, *args, **kw):  # noqa: N802
-        return []  # comme sur le Pi : le groupe n'apparaît pas dans « Interfaces »
-
-
-def fake_wifi_direct(tmp_path, netdevs, known=(), managed=()):
-    from berrycast.miracast import p2p
-
-    net = tmp_path / "net"
-    net.mkdir()
-    for name in netdevs:
-        (net / name).mkdir()
-    wd = p2p.WifiDirect.__new__(p2p.WifiDirect)
-    wd.dbus, wd.wpa, wd.group_path = FakeDbusModule, FakeWpa(known), None
-    calls = []
-
-    def fake_cli(ifname, *args):
-        calls.append((ifname,) + args)
-        if args == ("ping",):
-            return "PONG" if ifname in managed else ""
-        if args[:2] == ("wps_pin", "any"):
-            return args[2]
-        return ""
-
-    wd.wpa_cli = fake_cli
-    return wd, calls, net
+    events, done = [], threading.Event()
+    server = mice.MiceServer(lambda ip, port, name: events.append(("ready", ip, port, name)),
+                             lambda: (events.append(("stop",)), done.set()), port=0)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with sk.create_connection(("127.0.0.1", server.port), timeout=3) as client:
+            client.sendall(mice.build_message(1, [(0, "PC".encode("utf-16-le")),
+                                                  (2, (7236).to_bytes(2, "big"))]))
+            client.sendall(mice.build_message(2))
+            assert done.wait(3)
+    finally:
+        server.close()
+    assert events[0] == ("ready", "127.0.0.1", 7236, "PC")
+    assert ("stop",) in events
 
 
-def test_find_group_by_netdev_name(tmp_path, monkeypatch):
-    from berrycast.miracast import p2p
+def test_container_id_and_avahi_file():
+    from berrycast.miracast import mice
 
-    wd, _, net = fake_wifi_direct(tmp_path, ["wlan0", "p2p-dev-wlan0", "p2p-wlan0-0"],
-                                  known=["p2p-wlan0-0"])
-    monkeypatch.setattr(p2p, "NET_DIR", str(net))
-    assert wd.find_group() == ("/fi/w1/wpa_supplicant1/Interfaces/p2p-wlan0-0", "p2p-wlan0-0")
-
-
-def test_group_without_dbus_object_uses_wpa_cli(tmp_path, monkeypatch):
-    from berrycast.miracast import p2p
-
-    wd, calls, net = fake_wifi_direct(tmp_path, ["p2p-wlan0-0"], managed=["p2p-wlan0-0"])
-    monkeypatch.setattr(p2p, "NET_DIR", str(net))
-    assert wd.find_group() == ("", "p2p-wlan0-0")
-    wd.allow_pin("12345670", "p2p-wlan0-0")
-    assert ("p2p-wlan0-0", "wps_pin", "any", "12345670") in calls
+    cid = mice.container_id("0123456789abcdef0123456789abcdef" + chr(10))
+    assert cid == mice.container_id("0123456789abcdef0123456789abcdef")  # stable
+    assert len(cid) == 36 and cid.upper() == cid
+    xml = mice.avahi_service(cid)
+    assert "<type>_display._tcp</type>" in xml and "<port>7250</port>" in xml
+    assert f"container_id={{{cid}}}" in xml
 
 
-def test_remove_orphans_never_touches_managed_group(tmp_path, monkeypatch):
-    from berrycast.miracast import p2p
-
-    wd, _, net = fake_wifi_direct(tmp_path, ["p2p-wlan0-0", "p2p-wlan0-1"],
-                                  managed=["p2p-wlan0-0"])
-    monkeypatch.setattr(p2p, "NET_DIR", str(net))
-    deleted = []
-    monkeypatch.setattr(p2p.subprocess, "run", lambda cmd, **kw: deleted.append(cmd))
-    wd.remove_orphans()
-    assert deleted == [["iw", "dev", "p2p-wlan0-1", "del"]]
+def test_parse_ipv4():
+    out = "3: wlan0    inet 192.168.1.20/24 brd 192.168.1.255 scope global wlan0" + chr(10)
+    assert parse_ipv4(out) == "192.168.1.20"
+    assert parse_ipv4("") is None

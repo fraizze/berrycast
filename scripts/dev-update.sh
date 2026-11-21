@@ -59,8 +59,13 @@ install -m 644 "${SRC}"/system/dev/*.service "${SRC}"/system/dev/*.path /etc/sys
 install -d -m 755 /etc/polkit-1/rules.d
 install -m 644 "${SRC}/system/polkit/50-berrycast.rules" /etc/polkit-1/rules.d/
 usermod -a -G video,render,netdev,audio berrycast
-install -m 644 "${SRC}/system/networkmanager/berrycast-p2p.conf" /etc/NetworkManager/conf.d/
-nmcli general reload conf || true  # relit la configuration sans couper le Wi-Fi
+# Ancien réglage (groupes Wi-Fi Direct) devenu inutile avec MICE
+if [ -f /etc/NetworkManager/conf.d/berrycast-p2p.conf ]; then
+	rm -f /etc/NetworkManager/conf.d/berrycast-p2p.conf
+	nmcli general reload conf || true  # relit la configuration sans couper le Wi-Fi
+fi
+# Annonce mDNS Miracast (MICE) : écrite par berrycast-devsetup (root) au démarrage
+PYTHONPATH=/opt/berrycast python3 -c "from berrycast.dev import devsetup; devsetup.ensure_mice_announce()"
 systemctl daemon-reload
 systemctl enable berrycast-setupui.service berrycast-setup-apply.path 	berrycast-miracast.service berrycast-airplay.service
 systemctl start berrycast-setup-apply.path

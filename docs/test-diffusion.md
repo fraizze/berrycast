@@ -8,22 +8,22 @@ qui contient les services `berrycast-miracast` et `berrycast-airplay`.
 L'écran « BerryCast dev » affiche maintenant, en plus de l'adresse IP :
 
 ```
-PC Windows : touches Windows + K, puis « BerryCast »
-   code : 1234 5670
+PC Windows (même Wi-Fi) : Windows + K, puis « BerryCast »
 iPhone / iPad / Mac : « Recopie de l'écran », puis « BerryCast »
    code (1re fois) : 4821
 ```
 
-- Le **code Windows** (8 chiffres) change après chaque diffusion.
+- Windows : pas de code (Miracast over Infrastructure) ; **le PC doit être sur le même Wi-Fi**.
 - Le **code iPhone** (4 chiffres) est fixe pour ce Pi ; l'iPhone ne le demande qu'une fois.
 - Quand un appareil demande un code, la TV l'affiche **en très grand**.
 - Pendant une diffusion, la vidéo occupe tout l'écran.
 
 ## Test 1 : PC Windows
 
-1. Sur le PC : **Windows + K**, puis cliquez sur le nom du Pi.
-2. Windows demande « Saisissez le code PIN pour votre appareil » : tapez le **code Windows**
-   affiché sur la TV, puis **Connecter**.
+1. Le PC doit être sur **le même Wi-Fi** que le Pi (la box de la maison).
+2. Sur le PC : **Windows + K**, puis cliquez sur le nom du Pi.
+   Si Windows demande un code PIN : **Annuler**, puis recliquer sur le nom (Windows essaie
+   parfois d'abord l'ancienne méthode).
 3. L'écran du PC doit apparaître sur la TV après quelques secondes, avec le son.
 4. Pour arrêter : Windows + K → **Déconnecter**. La TV revient à l'écran d'accueil.
 

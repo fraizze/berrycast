@@ -58,7 +58,9 @@ def load_pin(state_dir: Path = STATE_DIR) -> str:
 def build_command(device_name: str, pin: str, alsa_device: str | None,
                   decoder: str) -> list[str]:
     """Arguments d'UxPlay (liste : pas de shell)."""
-    cmd = ["uxplay", "-n", device_name, "-nh", "-pin", pin, "-p",
+    # stdbuf : UxPlay écrit ses messages tout de suite (sinon ils restent en mémoire et
+    # arrivent par paquets, jusqu'à plusieurs minutes plus tard : constaté sur le Pi)
+    cmd = ["stdbuf", "-oL", "-eL", "uxplay", "-n", device_name, "-nh", "-pin", pin, "-p",
            "-vs", os.environ.get("BERRYCAST_VIDEO_SINK", "kmssink sync=false"),
            # Constaté sur le Pi : avec la synchronisation par horodatage (défaut), UxPlay
            # rejetait toutes les images (« invalid ntp_time < gst_video_pipeline_base_time ») :

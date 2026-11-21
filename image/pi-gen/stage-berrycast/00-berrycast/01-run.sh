@@ -17,9 +17,6 @@ chmod -R u=rwX,go=rX "${ROOTFS_DIR}/opt/berrycast"
 # 2. Services systemd de l'image de développement
 install -m 644 "${SRC}"/system/dev/*.service "${SRC}"/system/dev/*.path 	"${ROOTFS_DIR}/etc/systemd/system/"
 
-# NetworkManager ne gère pas les groupes Wi-Fi Direct de Miracast (p2p-wlan0-*)
-install -m 644 "${SRC}/system/networkmanager/berrycast-p2p.conf" 	"${ROOTFS_DIR}/etc/NetworkManager/conf.d/"
-
 # Droits polkit minimaux de l'utilisateur berrycast (ex. : relancer la recherche des Wi-Fi)
 install -d -m 755 "${ROOTFS_DIR}/etc/polkit-1/rules.d"
 install -m 644 "${SRC}/system/polkit/50-berrycast.rules" "${ROOTFS_DIR}/etc/polkit-1/rules.d/"

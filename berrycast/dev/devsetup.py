@@ -332,6 +332,22 @@ def apply_file(path: Path) -> tuple[list[str], list[str], list[str]]:
     return messages, warnings, errors
 
 
+def ensure_mice_announce() -> None:
+    """Annonce mDNS de Miracast over Infrastructure (fichier avahi, écrit une fois)."""
+    from berrycast.miracast import mice
+
+    path = Path(mice.AVAHI_SERVICE_FILE)
+    try:
+        machine_id = Path("/etc/machine-id").read_text(encoding="utf-8")
+        content = mice.avahi_service(mice.container_id(machine_id))
+        if not path.exists() or path.read_text(encoding="utf-8") != content:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            log.info("Annonce mDNS Miracast écrite : %s", path)
+    except OSError as exc:
+        log.warning("Annonce mDNS Miracast non écrite : %s", exc)
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
     path = BOOT_DIR / wifi_file.FILE_NAME
@@ -340,6 +356,8 @@ def main() -> int:
     # D'abord : cmdline.txt abîmé (ex. coupure de courant pendant une écriture) ?
     # Sans réparation, le prochain démarrage échouerait.
     repaired = repair_cmdline()
+
+    ensure_mice_announce()
 
     if not path.exists():
         # Fichier supprimé : on remet un modèle vide pour pouvoir le remplir plus tard.

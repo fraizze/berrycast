@@ -1,14 +1,12 @@
 """Service Miracast (Windows + K) : python3 -m berrycast.miracast.service
 
-Boucle principale :
-1. annonce Wi-Fi Direct + groupe permanent + adresse 192.168.173.1 + serveur DHCP ;
-2. code PIN à 8 chiffres affiché sur la TV (cast_state) et accepté par le groupe ;
-3. dès que le PC est connecté (192.168.173.80), négociation RTSP puis lecteur vidéo ;
-4. fin de diffusion : nouveau PIN, retour à l'attente.
+Miracast over Infrastructure (MS-MICE, voir mice.py) :
+1. le Pi s'annonce en Wi-Fi Direct (écoute, sans groupe) avec la capacité MICE ;
+2. le PC Windows (même réseau que le Pi) se connecte au port 7250 : SOURCE_READY ;
+3. le Pi se connecte au RTSP du PC, négocie (M1–M7) et lance le lecteur vidéo.
 
-Une seule diffusion à la fois : si l'iPhone diffuse déjà (AirPlay), la connexion du PC
-est refusée (le PC affiche une erreur), puis tout redevient disponible.
-Désactivé dans la configuration (miracast_enabled = false) : le service attend sans rien faire.
+Une seule diffusion à la fois : si l'iPhone diffuse déjà (AirPlay), la demande du PC est
+refusée. Désactivé dans la configuration (miracast_enabled = false) : le service attend.
 """
 
 from __future__ import annotations
@@ -20,105 +18,104 @@ import subprocess
 import sys
 import threading
 import time
-from pathlib import Path
 
 from berrycast import cast_state, config
-from berrycast.miracast import wfd
-from berrycast.miracast.p2p import P2PError, WifiDirect
+from berrycast.miracast.mice import MiceServer
+from berrycast.miracast.p2p import LISTEN_SECONDS, WifiDirect
 from berrycast.miracast.pipeline import Player
 from berrycast.miracast.rtsp_sink import RtspSink
 
 log = logging.getLogger("berrycast.miracast")
 
-SINK_IP = "192.168.173.1"
-SOURCE_IP = "192.168.173.80"  # seule adresse distribuée par notre DHCP
-LEASES = Path("/run/berrycast/miracast-dhcp.leases")
 SOURCE = "miracast"
+WIFI_IFACE = "wlan0"
+LOOP_SECONDS = 10
+REANNOUNCE_SECONDS = 300  # réannonce de toute façon toutes les 5 min
 
 
-def dhcp_command(ifname: str, leases: Path = LEASES) -> list[str]:
-    """dnsmasq en simple serveur DHCP (pas de DNS, pas de routeur) sur le groupe."""
-    return [
-        "dnsmasq", "--keep-in-foreground", "--conf-file=/dev/null", "--port=0",
-        f"--interface={ifname}", "--bind-interfaces", "--except-interface=lo",
-        f"--dhcp-range={SOURCE_IP},{SOURCE_IP},255.255.255.0,1h",
-        "--dhcp-option=3", "--dhcp-option=6",  # ni passerelle ni DNS : Internet reste sur la box
-        "--dhcp-authoritative", f"--dhcp-leasefile={leases}", "--pid-file=", "--log-dhcp",
-    ]
+def parse_ipv4(ip_output: str) -> str | None:
+    """Adresse IPv4 dans la sortie de « ip -4 -o addr show dev wlan0 »."""
+    for line in ip_output.splitlines():
+        parts = line.split()
+        if "inet" in parts:
+            return parts[parts.index("inet") + 1].split("/")[0]
+    return None
+
+
+def wifi_ipv4(iface: str = WIFI_IFACE) -> str | None:
+    try:
+        out = subprocess.run(["ip", "-4", "-o", "addr", "show", "dev", iface],
+                             capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return parse_ipv4(out)
 
 
 class MiracastService:
     def __init__(self) -> None:
         self.stop_event = threading.Event()
-        self.p2p: WifiDirect | None = None
-        self.ifname = ""
-        self.group_path: str | None = None
-        self.dhcp: subprocess.Popen | None = None
-        self.pin = ""
+        self.cfg = None
         self.session: RtspSink | None = None
+        self.busy = False  # une projection est en cours de préparation ou de diffusion
         self.player: Player | None = None
-        self.last_error = ""
+        self.lock = threading.Lock()
+        self.peer = ""
 
-    # ---- Réseau du groupe ---------------------------------------------------------
+    # ---- Projection (appelé par le serveur MICE) --------------------------------------
 
-    def setup_network(self, ifname: str) -> None:
-        if ifname == self.ifname and self.dhcp and self.dhcp.poll() is None:
-            return
-        self.stop_dhcp()
-        subprocess.run(["ip", "addr", "replace", f"{SINK_IP}/24", "dev", ifname], check=True)
-        subprocess.run(["ip", "link", "set", ifname, "up"], check=True)
-        LEASES.parent.mkdir(parents=True, exist_ok=True)
-        self.dhcp = subprocess.Popen(dhcp_command(ifname))
-        self.ifname = ifname
-        log.info("Réseau Wi-Fi Direct prêt sur %s (%s)", ifname, SINK_IP)
+    def on_ready(self, source_ip: str, rtsp_port: int, name: str) -> None:
+        with self.lock:
+            if self.busy:
+                log.info("Une diffusion Windows est déjà en cours : %s refusé", source_ip)
+                return
+            if cast_state.other_is_casting(SOURCE):
+                log.info("Un iPhone diffuse déjà : %s refusé", source_ip)
+                return
+            self.busy = True
+        self.peer = name
+        cast_state.write(SOURCE, "connecting", peer=name)
+        threading.Thread(target=self.run_session, args=(source_ip, rtsp_port),
+                         daemon=True).start()
 
-    def stop_dhcp(self) -> None:
-        if self.dhcp and self.dhcp.poll() is None:
-            self.dhcp.terminate()
-            try:
-                self.dhcp.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                self.dhcp.kill()
-        self.dhcp = None
+    def on_stop(self) -> None:
+        session = self.session
+        if session is not None:
+            session.stop()
 
-    def report_error(self, exc: Exception) -> None:
-        """Journalise une erreur sans répéter 100 fois la même trace (elle revient toutes
-        les 10 s tant que le problème dure)."""
-        message = f"{type(exc).__name__}: {exc}"
-        if message != self.last_error:
-            log.error("Wi-Fi Direct indisponible : %s (nouvel essai toutes les 10 s)", message,
-                      exc_info=not isinstance(exc, (P2PError, subprocess.CalledProcessError)))
-            self.last_error = message
-
-    def new_pin(self) -> None:
-        self.pin = wfd.new_pin()
-        self.p2p.allow_pin(self.pin, self.ifname)
-        cast_state.write(SOURCE, "ready", pin=wfd.format_pin(self.pin))
-
-    # ---- Session ----------------------------------------------------------------------
-
-    def try_connect(self) -> socket.socket | None:
+    def run_session(self, source_ip: str, rtsp_port: int) -> None:
         try:
-            return socket.create_connection((SOURCE_IP, wfd.RTSP_PORT), timeout=1.0)
-        except OSError:
-            return None
+            self._run_session(source_ip, rtsp_port)
+        except Exception:
+            log.exception("Erreur pendant la diffusion")
+        finally:
+            if self.player:
+                self.player.stop()
+            self.session = None
+            with self.lock:
+                self.busy = False
+            cast_state.write(SOURCE, "ready")
 
-    def run_session(self, sock: socket.socket, device_name: str, audio_output: str) -> None:
-        if cast_state.other_is_casting(SOURCE):
-            log.info("Un iPhone diffuse déjà : connexion du PC refusée")
-            sock.close()
-            time.sleep(3)
+    def _run_session(self, source_ip: str, rtsp_port: int) -> None:
+        log.info("Connexion au RTSP du PC %s:%s", source_ip, rtsp_port)
+        sock = None
+        for _ in range(10):  # le PC ouvre son RTSP juste après SOURCE_READY
+            try:
+                sock = socket.create_connection((source_ip, rtsp_port), timeout=3)
+                break
+            except OSError:
+                time.sleep(0.5)
+        if sock is None:
+            log.warning("Le RTSP du PC ne répond pas")
             return
-        cast_state.write(SOURCE, "connecting", pin=wfd.format_pin(self.pin))
-        self.player = Player(audio_output)
+        self.player = Player(self.cfg.audio_output)
         playing = threading.Event()
 
         def on_play() -> None:
             self.player.start()
             playing.set()
-            cast_state.write(SOURCE, "casting")
+            cast_state.write(SOURCE, "casting", peer=self.peer)
 
-        self.session = RtspSink(sock, SOURCE_IP, device_name, on_play=on_play,
+        self.session = RtspSink(sock, source_ip, self.cfg.device_name, on_play=on_play,
                                 on_stop=self.player.stop)
         worker = threading.Thread(target=self.session.run, daemon=True)
         worker.start()
@@ -126,59 +123,60 @@ class MiracastService:
             worker.join(timeout=5)
             if self.stop_event.is_set():
                 self.session.stop()
-            elif playing.is_set():
-                cast_state.write(SOURCE, "casting")  # « toujours en cours » pour l'écran
+            elif playing.is_set() and worker.is_alive():
+                cast_state.write(SOURCE, "casting", peer=self.peer)  # « toujours en cours »
                 if not self.player.running():
                     log.warning("Le lecteur s'est arrêté : relance")
                     self.player.start()
-        self.player.stop()
-        log.info("Session terminée : %s", self.session.reason)
-        self.session = None
+        log.info("Diffusion terminée : %s", self.session.reason)
 
     # ---- Boucle -----------------------------------------------------------------------
 
     def run(self) -> int:
-        cfg = config.load()
-        if not cfg.miracast_enabled:
+        self.cfg = config.load()
+        if not self.cfg.miracast_enabled:
             cast_state.write(SOURCE, "off")
             log.info("Miracast désactivé dans la configuration")
             self.stop_event.wait()
             return 0
-        self.p2p = WifiDirect()
-        self.p2p.announce(cfg.device_name)
+        server = MiceServer(self.on_ready, self.on_stop)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        log.info("En attente de Windows + K (port MICE %s)", server.port)
+        p2p = None
+        hostname = socket.gethostname()
+        announced_ip, last_announce, last_listen, last_error = None, 0.0, 0.0, ""
         try:
             while not self.stop_event.is_set():
+                now = time.monotonic()
                 try:
-                    group_path, ifname = self.p2p.ensure_group()
-                    group_key = group_path or ifname
-                    if group_key != self.group_path:
-                        self.pin = ""  # nouveau groupe : il faut lui redonner le PIN
-                        self.group_path = group_key
-                    self.setup_network(ifname)
-                    if not self.pin:
-                        self.new_pin()
-                except Exception as exc:  # P2P, D-Bus, réseau : on réessaie dans 10 s
-                    self.report_error(exc)
-                    cast_state.write(SOURCE, "off")
-                    self.pin = ""
-                    self.group_path = None
-                    self.stop_event.wait(10)
-                    continue
-                self.last_error = ""
-
-                sock = self.try_connect()
-                if sock is None:
-                    cast_state.write(SOURCE, "ready", pin=wfd.format_pin(self.pin))
-                    self.stop_event.wait(1)
-                    continue
-                log.info("PC connecté : négociation Miracast")
-                self.run_session(sock, cfg.device_name, cfg.audio_output)
-                self.pin = ""  # le PIN a servi : on en tire un nouveau
+                    if p2p is None:
+                        p2p = WifiDirect(WIFI_IFACE)
+                    ip = wifi_ipv4() or ""
+                    if ip != announced_ip or now - last_announce > REANNOUNCE_SECONDS:
+                        p2p.announce(self.cfg.device_name, hostname, ip or None)
+                        announced_ip, last_announce = ip, now
+                    if now - last_listen > LISTEN_SECONDS - 2 * LOOP_SECONDS and not self.busy:
+                        p2p.listen()
+                        last_listen = now
+                    if not self.busy:
+                        cast_state.write(SOURCE, "ready" if ip else "off")
+                    last_error = ""
+                except Exception as exc:  # D-Bus / wpa_supplicant : on réessaie
+                    message = f"{type(exc).__name__}: {exc}"
+                    if message != last_error:
+                        log.error("Wi-Fi Direct indisponible : %s (nouvel essai)", message)
+                        last_error = message
+                    p2p, announced_ip, last_listen = None, None, 0.0
+                    if not self.busy:
+                        cast_state.write(SOURCE, "off")
+                self.stop_event.wait(LOOP_SECONDS)
         finally:
+            server.close()
+            self.on_stop()
             if self.player:
                 self.player.stop()
-            self.stop_dhcp()
-            self.p2p.clear_announce()
+            if p2p:
+                p2p.clear_announce()
             cast_state.write(SOURCE, "off")
         return 0
 

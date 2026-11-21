@@ -1,10 +1,10 @@
-# Miracast (Windows + K) : Wi-Fi Direct, code PIN, négociation RTSP, lecteur GStreamer.
+# Miracast (Windows + K) en « Miracast over Infrastructure » (MS-MICE) : annonce Wi-Fi Direct
+# (sans groupe), connexion du PC par le Wi-Fi de la maison (port 7250), négociation RTSP,
+# lecteur GStreamer.
 #
 # Droits : utilisateur « berrycast » (pas root), avec seulement :
-# - groupe netdev : piloter wpa_supplicant par D-Bus (Wi-Fi Direct) ;
-# - groupes video, render, audio : afficher la vidéo (kmssink) et jouer le son ;
-# - capacités réseau : adresse IP du groupe Wi-Fi Direct (CAP_NET_ADMIN) et petit
-#   serveur DHCP pour le PC (CAP_NET_BIND_SERVICE, CAP_NET_RAW).
+# - groupe netdev : piloter wpa_supplicant par D-Bus (annonce Wi-Fi Direct) ;
+# - groupes video, render, audio : afficher la vidéo (kmssink) et jouer le son.
 
 [Unit]
 Description=BerryCast : Miracast (Windows + K)
@@ -17,8 +17,6 @@ Type=simple
 User=berrycast
 Group=berrycast
 SupplementaryGroups=netdev video render audio
-AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
 WorkingDirectory=/opt/berrycast
 Environment=PYTHONPATH=/opt/berrycast
 Environment=PYTHONUNBUFFERED=1
@@ -29,6 +27,7 @@ ExecStart=/usr/bin/python3 -m berrycast.miracast.service
 Restart=always
 RestartSec=5
 
+NoNewPrivileges=yes
 ProtectHome=yes
 PrivateTmp=yes
 
