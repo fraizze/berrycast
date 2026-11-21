@@ -63,8 +63,9 @@ iPhone diffuse → la demande MICE du PC est refusée. Choix : **refuser** (CLAU
   `gst-inspect-1.0`), pas le `constrained-high` que Windows envoyait. Le Pi n'annonce donc
   que **Constrained Baseline** (profil `01`, obligatoire pour toute source Wi-Fi Display),
   et seulement les modes qui tiennent dans l'écran (lu dans `/sys/class/drm/*/modes`).
-  Secours : si Windows choisit quand même un autre profil (lu dans M4), ou si le lecteur
-  s'arrête 2 fois, décodage par le processeur (`avdec_h264`).
+  Secours : si Windows choisit quand même un autre profil (lu dans M4), décodage par le
+  processeur (`avdec_h264`). (Plus de bascule « après 2 arrêts du lecteur » : un arrêt
+  peut venir du son, et le décodage processeur est bien trop lent sur un Pi 3.)
 - **Pas d'agrandissement par `kmssink`** (`can-scale=true` → `No space left on device`) :
   `videoscale` met l'image à la taille de l'écran, comme dans la chaîne d'UxPlay
   (`v4l2h264dec ! v4l2convert ! videoscale ! kmssink can-scale=false`).
@@ -91,3 +92,9 @@ iPhone diffuse → la demande MICE du PC est refusée. Choix : **refuser** (CLAU
   proportions en réduisant la hauteur. Un `capsfilter` impose la taille exacte de l'écran
   (lue dans `/sys/class/drm`) : image plein écran. Résultat mesuré avant ce réglage :
   ~1 s de retard (au lieu de ~20 s).
+- **Gros retard et gels en lisant une vidéo sur le PC.** Deux causes : (1) le son change
+  de format en pleine diffusion (4000 Hz mono, puis vrai son) et la sortie son plantait
+  tout le lecteur → format de sortie fixe (48 kHz stéréo) ; (2) en 1080p, le débit sature
+  le Wi-Fi 2,4 GHz du Pi 3 → 720p demandé à Windows sur Pi 3 / Zero 2 W (1080p sur
+  Pi 4 / 5), agrandi par la puce. Le journal signale les paquets perdus faute de place
+  (`/proc/net/udp`, colonne « drops »).

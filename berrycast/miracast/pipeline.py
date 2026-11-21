@@ -44,6 +44,12 @@ DROP_LATE_FRAMES = "queue leaky=downstream max-size-buffers=2 max-size-bytes=0 m
 VIDEO_SINK = "kmssink sync=false can-scale=false"
 DRM_DIR = Path("/sys/class/drm")
 DEFAULT_DISPLAY = (1920, 1080)
+# Son : format de sortie FIXE. Constaté sur le Pi : Windows envoie d'abord un son de
+# format inattendu (4000 Hz, 1 canal), puis change de format quand une vidéo démarre ;
+# la sortie son, renégociée en pleine diffusion, échouait (« Le format du flux n'est pas
+# correct ») et arrêtait tout le lecteur. audioconvert/audioresample absorbent les
+# changements, la sortie son garde toujours le même format.
+AUDIO_OUT_CAPS = "audio/x-raw,format=S16LE,rate=48000,channels=2"
 # Tampon de réception UDP (limité par net.core.rmem_max : system/sysctl/90-berrycast.conf)
 UDP_BUFFER_BYTES = 4 * 1024 * 1024
 UDP_TABLES = (Path("/proc/net/udp"), Path("/proc/net/udp6"))
@@ -65,6 +71,39 @@ def choose_decoder(model: str | None = None, hw_device_exists: bool | None = Non
     if "Raspberry Pi 5" in model or not hw_device_exists:
         return "avdec_h264"
     return "v4l2h264dec"
+
+
+def max_video_height(model: str | None = None) -> int:
+    """Plus grande hauteur d'image à demander à Windows selon le modèle de Pi.
+
+    Constaté sur le Pi 3 B : en 1080p, une vidéo plein écran sur le PC faisait saturer le
+    Wi-Fi (2,4 GHz seulement) : gros retard et gels. En 720p, le débit est environ divisé
+    par deux ; la puce agrandit ensuite l'image à la taille de l'écran (sans processeur).
+    Pi 4 / Pi 5 (Wi-Fi 5 GHz, plus puissants) : 1080p.
+    """
+    model = pi_model() if model is None else model
+    return 1080 if ("Raspberry Pi 4" in model or "Raspberry Pi 5" in model) else 720
+
+
+def stream_size(display: tuple[int, int], max_height: int) -> tuple[int, int]:
+    """Taille utilisée pour choisir les modes proposés à Windows (écran, plafonnée)."""
+    width, height = display
+    if height > max_height:
+        return max_height * 16 // 9, max_height
+    return width, height
+
+
+def udp_drops(port: int, tables: list[str]) -> int:
+    """Paquets UDP jetés par le système faute de place (dernière colonne de /proc/net/udp)."""
+    wanted = f"{port:04X}"
+    total = 0
+    for text in tables:
+        for line in text.splitlines()[1:]:
+            fields = line.split()
+            if len(fields) > 2 and fields[1].rsplit(":", 1)[-1].upper() == wanted:
+                if fields[-1].isdigit():
+                    total += int(fields[-1])
+    return total
 
 
 def decoder_for_profile(decoder: str, profile: int | None) -> str:
@@ -183,7 +222,7 @@ def build_command(decoder: str, alsa_device: str | None, port: int = wfd.RTP_POR
         f"demux. ! queue max-size-time=0 max-size-buffers=0 ! h264parse "
         f"! {video_chain(decoder, hw_convert, display)} ! {sink} "
         "demux. ! queue max-size-time=0 max-size-buffers=0 ! aacparse ! avdec_aac "
-        f"! audioconvert ! audioresample ! {audio_sink}"
+        f"! audioconvert ! audioresample ! {AUDIO_OUT_CAPS} ! {audio_sink}"
     )
     # -v : formats choisis entre chaque étape écrits dans le journal (taille, forme des
     # pixels, mémoire) : indispensable pour comprendre un écran noir ou un retard.

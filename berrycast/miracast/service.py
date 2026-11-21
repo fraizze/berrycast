@@ -23,8 +23,16 @@ from berrycast import cast_state, config
 from berrycast.miracast import wfd
 from berrycast.miracast.mice import MiceServer
 from berrycast.miracast.p2p import LISTEN_SECONDS, WifiDirect
-from berrycast.miracast.pipeline import Player, display_size
+from berrycast.miracast.pipeline import (
+    Player,
+    display_size,
+    max_video_height,
+    read_udp_tables,
+    stream_size,
+    udp_drops,
+)
 from berrycast.miracast.rtsp_sink import RtspSink
+from berrycast.miracast.wfd import RTP_PORT
 
 log = logging.getLogger("berrycast.miracast")
 
@@ -120,26 +128,30 @@ class MiracastService:
             cast_state.write(SOURCE, "casting", peer=self.peer)
 
         display = display_size()
-        log.info("Écran %dx%d : modes proposés à Windows %s", *display,
-                 wfd.video_formats(display))
+        wanted = stream_size(display, max_video_height())
+        log.info("Écran %dx%d, flux demandé jusqu'à %dx%d : modes proposés à Windows %s",
+                 *display, *wanted, wfd.video_formats(wanted))
         self.session = RtspSink(sock, source_ip, self.cfg.device_name, on_play=on_play,
-                                on_stop=self.player.stop, display=display)
+                                on_stop=self.player.stop, display=wanted)
         worker = threading.Thread(target=self.session.run, daemon=True)
         worker.start()
-        crashes = 0
+        crashes, drops_seen = 0, udp_drops(RTP_PORT, read_udp_tables())
         while worker.is_alive():
             worker.join(timeout=5)
             if self.stop_event.is_set():
                 self.session.stop()
             elif playing.is_set() and worker.is_alive():
                 cast_state.write(SOURCE, "casting", peer=self.peer)  # « toujours en cours »
+                drops = udp_drops(RTP_PORT, read_udp_tables())
+                if drops > drops_seen:
+                    log.warning("Paquets vidéo perdus (tampon plein) : %d", drops - drops_seen)
+                    drops_seen = drops
                 if not self.player.running():
+                    # Pas de passage au décodage logiciel ici : un arrêt peut venir du son,
+                    # et le décodage par le processeur est bien trop lent sur un Pi 3.
                     crashes += 1
-                    # 2 arrêts de suite : on ne compte plus sur le décodeur matériel
-                    software = crashes >= 2
-                    log.warning("Le lecteur s'est arrêté (%d fois) : relance%s", crashes,
-                                " en décodage logiciel" if software else "")
-                    self.player.start(self.session.video_profile, software=software)
+                    log.warning("Le lecteur s'est arrêté (%d fois) : relance", crashes)
+                    self.player.start(self.session.video_profile)
                     self.wait_player()
                     self.session.schedule_idr()  # le nouveau lecteur a besoin d'une image complète
         log.info("Diffusion terminée : %s", self.session.reason)

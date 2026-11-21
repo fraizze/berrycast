@@ -509,3 +509,29 @@ def test_udp_buffer_in_command():
     conf = (Path(__file__).parent.parent / "system" / "sysctl" / "90-berrycast.conf").read_text(
         encoding="utf-8")
     assert "net.core.rmem_max = 8388608" in conf  # au moins le tampon demandé
+
+
+def test_pi3_asks_windows_for_720p():
+    assert pipeline.max_video_height("Raspberry Pi 3 Model B Rev 1.2") == 720
+    assert pipeline.max_video_height("Raspberry Pi Zero 2 W Rev 1.0") == 720
+    assert pipeline.max_video_height("Raspberry Pi 4 Model B Rev 1.5") == 1080
+    assert pipeline.max_video_height("Raspberry Pi 5 Model B Rev 1.0") == 1080
+    assert pipeline.stream_size((1920, 1080), 720) == (1280, 720)
+    assert pipeline.stream_size((1920, 1080), 1080) == (1920, 1080)
+    assert pipeline.stream_size((1280, 720), 720) == (1280, 720)
+    # 720p : seulement 640x480 (obligatoire) et 1280x720p30 proposés
+    mask = int(wfd.video_formats(pipeline.stream_size((1920, 1080), 720)).split()[4], 16)
+    assert mask == (1 << 0) | (1 << 5)
+
+
+def test_udp_drops():
+    table = UDP.replace("   999        0 1 2 0\n", "   999        0 1 2 37\n", 2)
+    assert pipeline.udp_drops(1028, [table]) == 37
+    assert pipeline.udp_drops(1028, [UDP]) == 0
+    assert pipeline.udp_drops(5000, [table]) == 0
+
+
+def test_audio_output_format_is_fixed():
+    text = " ".join(pipeline.build_command("v4l2h264dec", "plughw:CARD=vc4hdmi,DEV=0"))
+    assert ("! audioconvert ! audioresample ! audio/x-raw,format=S16LE,rate=48000,channels=2 "
+            "! alsasink sync=false device=plughw:CARD=vc4hdmi,DEV=0") in text
