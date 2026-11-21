@@ -30,12 +30,41 @@ PRIMARY_DEVICE_TYPE_TV = bytes.fromhex("0007" "0050f204" "0001")
 
 # --- Capacités annoncées (réponse à M3) ---------------------------------------------
 # AAC 2 canaux 48 kHz (décodé par GStreamer).
-# Vidéo H.264 « Constrained High », niveau 4.1 (0x08), modes CEA 640x480p60 (bit 0,
-# obligatoire), 1280x720p30 (bit 5) et 1920x1080p30 (bit 7) = 0x000000A1, aucun mode VESA
-# ni HH. Constaté sur le Pi : avec les valeurs de lazycast (tous les modes, niveau 4.2),
-# Windows choisissait 1024x768 à 60 i/s niveau 4.2, refusé par le décodeur du Pi 3.
 AUDIO_CODECS = "AAC 00000001 00"
-VIDEO_FORMATS = "00 00 02 08 000000A1 00000000 00000000 00 0000 0000 00 none none"
+
+# Vidéo H.264 « Constrained Baseline » (profil 0x01) : imposé à tous les appareils par la
+# spécification Wi-Fi Display, et accepté par le décodeur matériel du Pi (constaté :
+# v4l2h264dec accepte baseline, constrained-baseline, main, high, mais PAS le
+# « constrained-high » que Windows envoyait). Niveau 4.1 (0x08).
+# Modes CEA (bits) : 0 = 640x480p60 (obligatoire), 5 = 1280x720p30, 7 = 1920x1080p30 ;
+# seulement ceux qui tiennent dans l'écran (le Pi 3 ne sait pas agrandir l'image).
+CEA_640x480P60, CEA_1280x720P30, CEA_1920x1080P30 = 1 << 0, 1 << 5, 1 << 7
+PROFILE_CBP = "01"
+LEVEL_41 = "08"
+
+
+def video_formats(display: tuple[int, int] = (1920, 1080)) -> str:
+    """Valeur de wfd_video_formats selon la taille de l'écran."""
+    width, height = display
+    cea = CEA_640x480P60
+    if width >= 1280 and height >= 720:
+        cea |= CEA_1280x720P30
+    if width >= 1920 and height >= 1080:
+        cea |= CEA_1920x1080P30
+    return (f"00 00 {PROFILE_CBP} {LEVEL_41} {cea:08X} 00000000 00000000 "
+            "00 0000 0000 00 none none")
+
+
+VIDEO_FORMATS = video_formats()
+
+
+def chosen_profile(value: str) -> int | None:
+    """Profil H.264 choisi par la source dans M4 (« 00 00 02 10 … » -> 0x02), ou None."""
+    parts = value.split()
+    try:
+        return int(parts[2], 16)
+    except (IndexError, ValueError):
+        return None
 
 
 def wps_checksum(pin7: int) -> int:
@@ -151,12 +180,13 @@ def response(cseq: str, extra: dict[str, str] | None = None, body: str = "") -> 
     return build("RTSP/1.0 200 OK", headers, body)
 
 
-def sink_parameters(device_name: str) -> dict[str, str]:
+def sink_parameters(device_name: str,
+                    display: tuple[int, int] = (1920, 1080)) -> dict[str, str]:
     """Valeurs du récepteur pour chaque paramètre que la source peut demander (M3)."""
     return {
         "wfd_client_rtp_ports": f"RTP/AVP/UDP;unicast {RTP_PORT} 0 mode=play",
         "wfd_audio_codecs": AUDIO_CODECS,
-        "wfd_video_formats": VIDEO_FORMATS,
+        "wfd_video_formats": video_formats(display),
         "wfd_3d_video_formats": "none",
         "wfd_coupled_sink": "none",
         "wfd_connector_type": "05",  # HDMI
@@ -177,13 +207,14 @@ def sink_parameters(device_name: str) -> dict[str, str]:
     }
 
 
-def answer_get_parameter(requested: list[str], device_name: str) -> str:
+def answer_get_parameter(requested: list[str], device_name: str,
+                         display: tuple[int, int] = (1920, 1080)) -> str:
     """Corps de la réponse à M3 : seulement les paramètres demandés que l'on connaît.
 
     Un paramètre inconnu (wfd_display_edid…) est simplement omis : la source utilise
     alors sa valeur par défaut.
     """
-    known = sink_parameters(device_name)
+    known = sink_parameters(device_name, display)
     lines = [f"{name}: {known[name]}" for name in requested if name in known]
     return "".join(line + "\r\n" for line in lines)
 

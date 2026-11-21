@@ -55,3 +55,19 @@ iPhone diffuse → la demande MICE du PC est refusée. Choix : **refuser** (CLAU
 4. Le **code iPhone** n'apparaît en grand que si le dessin d'UxPlay est bien reconnu ; il
    reste de toute façon affiché sur l'écran d'accueil.
 5. Noms exacts des paquets dans l'image (uxplay, gstreamer1.0-*) : vérifiés pour Debian 13.
+
+## Constats sur le Pi 3 (vidéo)
+
+- **Windows : écran noir.** Le décodeur matériel (`v4l2h264dec`) n'accepte que les profils
+  H.264 `baseline`, `constrained-baseline`, `main`, `high` (modèle de son entrée, vu avec
+  `gst-inspect-1.0`), pas le `constrained-high` que Windows envoyait. Le Pi n'annonce donc
+  que **Constrained Baseline** (profil `01`, obligatoire pour toute source Wi-Fi Display),
+  et seulement les modes qui tiennent dans l'écran (lu dans `/sys/class/drm/*/modes`).
+  Secours : si Windows choisit quand même un autre profil (lu dans M4), ou si le lecteur
+  s'arrête 2 fois, décodage par le processeur (`avdec_h264`).
+- **Pas d'agrandissement par `kmssink`** (`can-scale=true` → `No space left on device`) :
+  `videoscale` met l'image à la taille de l'écran, comme dans la chaîne d'UxPlay
+  (`v4l2h264dec ! v4l2convert ! videoscale ! kmssink can-scale=false`).
+- **iPhone en paysage** : c'est la *hauteur* demandée par `-s` qui règle la taille ; avec
+  1080, l'image en paysage faisait ~2340 de large (plus que l'écran) et le lecteur plantait.
+  Le Pi demande `-s 1920x872` (écran 1920x1080) : l'image en paysage tient dans la largeur.

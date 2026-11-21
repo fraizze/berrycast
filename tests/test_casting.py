@@ -201,9 +201,11 @@ def test_pipeline_command():
     assert cmd[:3] == ["gst-launch-1.0", "-q", "-e"]
     assert "udpsrc" in cmd and "port=1028" in cmd
     assert "caps=application/x-rtp,media=video,clock-rate=90000,encoding-name=MP2T" in cmd
-    assert "! h264parse ! v4l2h264dec !" in text
-    assert pipeline.MIRACAST_DECODER == "decodebin"  # le lecteur Miracast choisit tout seul
-    assert "kmssink sync=false can-scale=false" in text
+    # Même chaîne qu'UxPlay (qui fonctionne sur le Pi 3)
+    assert ("! h264parse ! v4l2h264dec ! v4l2convert ! videoscale "
+            "! kmssink sync=false can-scale=false" in text)
+    soft = " ".join(pipeline.build_command("avdec_h264", None))
+    assert "! h264parse ! avdec_h264 ! videoconvert ! videoscale ! kmssink" in soft
     assert "device=plughw:CARD=vc4hdmi,DEV=0" in text and "avdec_aac" in text
 
 
@@ -239,6 +241,18 @@ def test_uxplay_command():
     assert cmd[cmd.index("-vsync") + 1] == "no"
     assert cmd[cmd.index("-vs") + 1].startswith("kmssink")
     assert "-avdec" in airplay.build_command("X", "1111", None, "avdec_h264")
+    assert cmd[cmd.index("-s") + 1] == "1920x872"  # écran 1920x1080 par défaut
+
+
+def test_uxplay_size_fits_landscape():
+    # Hauteur demandée telle qu'un iPhone en paysage (19,5:9) tienne dans la largeur
+    for display in ((1920, 1080), (1280, 720), (1024, 768), (3840, 2160)):
+        w, h = airplay.requested_size(display)
+        assert w == display[0] and h <= display[1] and h % 2 == 0
+        assert h * 19.5 / 9 <= w
+    assert airplay.requested_size((1920, 1080)) == (1920, 872)
+    cmd = airplay.build_command("X", "1111", None, "v4l2h264dec", (1280, 720))
+    assert cmd[cmd.index("-s") + 1] == "1280x580"
 
 
 TCP = """  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid
@@ -399,8 +413,42 @@ def test_idr_requested_again_while_player_starts():
     source_sock.close()
 
 
-def test_video_formats_limited_to_30fps_level_41():
+def test_video_formats_constrained_baseline_fitting_display():
     fields = wfd.VIDEO_FORMATS.split()
-    assert fields[2] == "02" and fields[3] == "08"  # Constrained High, niveau 4.1
+    assert len(fields) == 13
+    # Constrained Baseline seulement (le décodeur du Pi refuse « constrained-high »), niveau 4.1
+    assert fields[2] == "01" and fields[3] == "08"
     assert int(fields[4], 16) == (1 << 0) | (1 << 5) | (1 << 7)  # 640x480p60, 720p30, 1080p30
     assert fields[5] == "00000000" and fields[6] == "00000000"  # ni VESA ni HH
+    # Seulement les modes qui tiennent dans l'écran
+    assert int(wfd.video_formats((1280, 720)).split()[4], 16) == (1 << 0) | (1 << 5)
+    assert int(wfd.video_formats((1024, 768)).split()[4], 16) == 1 << 0
+    body = wfd.answer_get_parameter(["wfd_video_formats"], "X", (1280, 720))
+    assert body == f"wfd_video_formats: {wfd.video_formats((1280, 720))}\r\n"
+
+
+def test_decoder_follows_chosen_profile():
+    tail = "00000000 00000000 00 0000 0000 00 none none"
+    assert wfd.chosen_profile(f"00 00 02 10 00000080 {tail}") == 2
+    assert wfd.chosen_profile(f"00 00 01 08 00000001 {tail}") == 1
+    assert wfd.chosen_profile("") is None and wfd.chosen_profile("none") is None
+    assert pipeline.decoder_for_profile("v4l2h264dec", 0x01) == "v4l2h264dec"
+    assert pipeline.decoder_for_profile("v4l2h264dec", None) == "v4l2h264dec"
+    assert pipeline.decoder_for_profile("v4l2h264dec", 0x02) == "avdec_h264"  # secours
+    assert pipeline.decoder_for_profile("avdec_h264", 0x01) == "avdec_h264"
+
+
+def test_display_size(tmp_path):
+    assert pipeline.parse_mode("1920x1080\n1280x720\n") == (1920, 1080)
+    assert pipeline.parse_mode("1920x1080i\n") == (1920, 1080)
+    assert pipeline.parse_mode("") is None
+    off = tmp_path / "card0-HDMI-A-1"
+    off.mkdir()
+    (off / "status").write_text("disconnected\n")
+    (off / "modes").write_text("")
+    on = tmp_path / "card0-HDMI-A-2"
+    on.mkdir()
+    (on / "status").write_text("connected\n")
+    (on / "modes").write_text("1280x720\n720x576\n")
+    assert pipeline.display_size(tmp_path) == (1280, 720)
+    assert pipeline.display_size(tmp_path / "absent") == (1920, 1080)

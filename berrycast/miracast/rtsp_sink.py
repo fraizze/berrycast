@@ -35,8 +35,10 @@ class RtspSink:
     def __init__(self, sock: socket.socket, source_ip: str, device_name: str,
                  on_play: Callable[[], None] | None = None,
                  on_stop: Callable[[], None] | None = None,
-                 clock: Callable[[], float] = time.monotonic):
+                 clock: Callable[[], float] = time.monotonic,
+                 display: tuple[int, int] = (1920, 1080)):
         self.sock = sock
+        self.display = display  # taille de l'écran : modes vidéo proposés à la source
         self.source_ip = source_ip
         self.device_name = device_name
         self.on_play = on_play or (lambda: None)
@@ -87,7 +89,8 @@ class RtspSink:
             self.request("OPTIONS", "*", "OPTIONS", {"Require": "org.wfa.wfd1.0"})  # M2
         elif method == "GET_PARAMETER":
             requested = msg.parameters()
-            body = wfd.answer_get_parameter(requested, self.device_name) if requested else ""
+            body = (wfd.answer_get_parameter(requested, self.device_name, self.display)
+                    if requested else "")
             self.send(wfd.response(msg.cseq, body=body))  # M3, ou M16 si vide
         elif method == "SET_PARAMETER":
             values = msg.values()
@@ -131,9 +134,21 @@ class RtspSink:
             # juste après PLAY arrivait avant que le lecteur écoute ; ensuite Windows n'envoie
             # que des images « différentielles », impossibles à décoder. On la redemande
             # plusieurs fois pendant que le lecteur démarre.
-            start = self.clock()
-            self.idr_due = [start + delay for delay in IDR_REQUEST_DELAYS]
+            self.schedule_idr()
             self.send_due_idr()
+
+    def schedule_idr(self) -> None:
+        """Prévoit plusieurs demandes d'image complète (envoyées par la boucle run).
+
+        Aussi appelé quand le lecteur est relancé : sans nouvelle image complète, il ne
+        pourrait rien afficher."""
+        start = self.clock()
+        self.idr_due = [start + delay for delay in IDR_REQUEST_DELAYS]
+
+    @property
+    def video_profile(self) -> int | None:
+        """Profil H.264 choisi par la source dans M4 (None si inconnu)."""
+        return wfd.chosen_profile(self.formats.get("wfd_video_formats", ""))
 
     def request_idr(self) -> None:
         """Demande à la source une image complète (wfd_idr_request)."""

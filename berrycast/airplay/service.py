@@ -26,7 +26,12 @@ import time
 from pathlib import Path
 
 from berrycast import audio, cast_state, config
-from berrycast.miracast.pipeline import VIDEO_SINK, choose_decoder
+from berrycast.miracast.pipeline import (
+    DEFAULT_DISPLAY,
+    VIDEO_SINK,
+    choose_decoder,
+    display_size,
+)
 
 log = logging.getLogger("berrycast.airplay")
 
@@ -55,8 +60,25 @@ def load_pin(state_dir: Path = STATE_DIR) -> str:
     return pin
 
 
+# Format le plus allongé d'un iPhone tenu en paysage (19,5:9 = 2,17), avec une marge
+WIDEST_ASPECT = 2.2
+
+
+def requested_size(display: tuple[int, int]) -> tuple[int, int]:
+    """Taille demandée à l'iPhone (option -s d'UxPlay).
+
+    Doc d'UxPlay : c'est la HAUTEUR qui règle la taille du flux ; la largeur suit la forme
+    de l'image. Constaté sur le Pi : en paysage, avec la hauteur 1080, l'image faisait
+    ~2340 de large, plus que l'écran (1920) et que le décodeur : la diffusion plantait.
+    On demande donc une hauteur telle que l'image en paysage tienne dans la largeur.
+    """
+    width, height = display
+    h = min(height, int(width / WIDEST_ASPECT))
+    return width, h - h % 2
+
+
 def build_command(device_name: str, pin: str, alsa_device: str | None,
-                  decoder: str) -> list[str]:
+                  decoder: str, display: tuple[int, int] = DEFAULT_DISPLAY) -> list[str]:
     """Arguments d'UxPlay (liste : pas de shell)."""
     # stdbuf : UxPlay écrit ses messages tout de suite (sinon ils restent en mémoire et
     # arrivent par paquets, jusqu'à plusieurs minutes plus tard : constaté sur le Pi)
@@ -65,7 +87,8 @@ def build_command(device_name: str, pin: str, alsa_device: str | None,
            # Constaté sur le Pi : avec la synchronisation par horodatage (défaut), UxPlay
            # rejetait toutes les images (« invalid ntp_time < gst_video_pipeline_base_time ») :
            # on affiche les images dès leur arrivée (doc UxPlay : « -vsync no »).
-           "-vsync", "no"]
+           "-vsync", "no",
+           "-s", "{}x{}".format(*requested_size(display))]
     if alsa_device:
         cmd += ["-as", f"alsasink device={alsa_device}"]
     if decoder == "avdec_h264":
@@ -141,7 +164,7 @@ class AirPlayService:
 
     def start(self, cfg) -> None:
         cmd = build_command(cfg.device_name, load_pin(), audio.alsa_device(cfg.audio_output),
-                            choose_decoder())
+                            choose_decoder(), display_size())
         pin_index = cmd.index("-pin") + 1
         log.info("Lancement : %s", " ".join("****" if i == pin_index else a
                                             for i, a in enumerate(cmd)))

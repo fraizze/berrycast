@@ -20,9 +20,10 @@ import threading
 import time
 
 from berrycast import cast_state, config
+from berrycast.miracast import wfd
 from berrycast.miracast.mice import MiceServer
 from berrycast.miracast.p2p import LISTEN_SECONDS, WifiDirect
-from berrycast.miracast.pipeline import Player
+from berrycast.miracast.pipeline import Player, display_size
 from berrycast.miracast.rtsp_sink import RtspSink
 
 log = logging.getLogger("berrycast.miracast")
@@ -113,14 +114,18 @@ class MiracastService:
         def on_play() -> None:
             if not cast_state.wait_screen_free(SOURCE):
                 log.warning("AirPlay n'a pas libéré l'écran à temps : essai quand même")
-            self.player.start()
+            self.player.start(self.session.video_profile)
             playing.set()
             cast_state.write(SOURCE, "casting", peer=self.peer)
 
+        display = display_size()
+        log.info("Écran %dx%d : modes proposés à Windows %s", *display,
+                 wfd.video_formats(display))
         self.session = RtspSink(sock, source_ip, self.cfg.device_name, on_play=on_play,
-                                on_stop=self.player.stop)
+                                on_stop=self.player.stop, display=display)
         worker = threading.Thread(target=self.session.run, daemon=True)
         worker.start()
+        crashes = 0
         while worker.is_alive():
             worker.join(timeout=5)
             if self.stop_event.is_set():
@@ -128,8 +133,13 @@ class MiracastService:
             elif playing.is_set() and worker.is_alive():
                 cast_state.write(SOURCE, "casting", peer=self.peer)  # « toujours en cours »
                 if not self.player.running():
-                    log.warning("Le lecteur s'est arrêté : relance")
-                    self.player.start()
+                    crashes += 1
+                    # 2 arrêts de suite : on ne compte plus sur le décodeur matériel
+                    software = crashes >= 2
+                    log.warning("Le lecteur s'est arrêté (%d fois) : relance%s", crashes,
+                                " en décodage logiciel" if software else "")
+                    self.player.start(self.session.video_profile, software=software)
+                    self.session.schedule_idr()  # le nouveau lecteur a besoin d'une image complète
         log.info("Diffusion terminée : %s", self.session.reason)
 
     # ---- Boucle -----------------------------------------------------------------------
