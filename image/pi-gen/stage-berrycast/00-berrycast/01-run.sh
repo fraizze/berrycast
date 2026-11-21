@@ -21,8 +21,9 @@ install -m 644 "${SRC}"/system/dev/*.service "${SRC}"/system/dev/*.path 	"${ROOT
 install -d -m 755 "${ROOTFS_DIR}/etc/polkit-1/rules.d"
 install -m 644 "${SRC}/system/polkit/50-berrycast.rules" "${ROOTFS_DIR}/etc/polkit-1/rules.d/"
 
-# 3. Console : écran jamais éteint, curseur masqué, moins de messages du noyau sur l'écran
-sed -i '1 s/$/ consoleblank=0 loglevel=3 vt.global_cursor_default=0/' \
+# 3. Console : écran jamais éteint, curseur masqué, pas de messages du noyau ni de systemd
+#    (« [ OK ] Reached target… ») par-dessus l'écran BerryCast (seules les erreurs restent)
+sed -i '1 s/$/ consoleblank=0 loglevel=3 vt.global_cursor_default=0 systemd.show_status=error/' \
 	"${ROOTFS_DIR}/boot/firmware/cmdline.txt"
 
 on_chroot << EOF
