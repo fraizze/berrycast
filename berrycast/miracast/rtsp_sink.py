@@ -28,6 +28,7 @@ from berrycast.miracast import wfd
 log = logging.getLogger("berrycast.miracast.rtsp")
 
 KEEPALIVE_TIMEOUT = 70  # secondes sans aucun message de la source -> fin de session
+IDR_REQUEST_DELAYS = (0.0, 1.5, 3.0, 5.0, 8.0)  # après PLAY : le lecteur met ~2 s à démarrer
 
 
 class RtspSink:
@@ -52,6 +53,7 @@ class RtspSink:
         self.formats: dict[str, str] = {}
         self.last_message = clock()
         self.stop_event = threading.Event()
+        self.idr_due: list[float] = []  # moments où redemander une image complète
 
     # ---- Envoi ------------------------------------------------------------------
 
@@ -125,9 +127,24 @@ class RtspSink:
         elif kind == "PLAY":
             self.playing = True
             log.info("---- Négociation réussie : diffusion en cours ----")
-            # Demande une image complète tout de suite (affichage plus rapide)
-            self.request("SET_PARAMETER", "rtsp://localhost/wfd1.0", "IDR",
-                         body="wfd_idr_request\r\n")
+            # Constaté sur le Pi : l'image complète (IDR, avec les réglages SPS/PPS) envoyée
+            # juste après PLAY arrivait avant que le lecteur écoute ; ensuite Windows n'envoie
+            # que des images « différentielles », impossibles à décoder. On la redemande
+            # plusieurs fois pendant que le lecteur démarre.
+            start = self.clock()
+            self.idr_due = [start + delay for delay in IDR_REQUEST_DELAYS]
+            self.send_due_idr()
+
+    def request_idr(self) -> None:
+        """Demande à la source une image complète (wfd_idr_request)."""
+        self.request("SET_PARAMETER", "rtsp://localhost/wfd1.0", "IDR",
+                     body="wfd_idr_request\r\n")
+
+    def send_due_idr(self) -> None:
+        now = self.clock()
+        while self.idr_due and self.idr_due[0] <= now:
+            self.idr_due.pop(0)
+            self.request_idr()
 
     def teardown(self, reason: str) -> None:
         if self.session and not self.finished:
@@ -153,7 +170,7 @@ class RtspSink:
 
     def run(self) -> str:
         """Traite la session jusqu'à sa fin. Renvoie la raison de la fin."""
-        self.sock.settimeout(1.0)
+        self.sock.settimeout(0.5)
         try:
             while not self.finished:
                 if self.stop_event.is_set():
@@ -163,6 +180,7 @@ class RtspSink:
                     self.end("plus de nouvelles de la source")
                     break
                 try:
+                    self.send_due_idr()
                     data = self.sock.recv(4096)
                 except TimeoutError:
                     continue

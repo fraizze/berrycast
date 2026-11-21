@@ -24,6 +24,9 @@ from berrycast.miracast import wfd
 log = logging.getLogger("berrycast.miracast.pipeline")
 
 HW_DECODER_DEVICE = Path("/dev/video10")  # décodeur H.264 matériel (bcm2835-codec)
+# can-scale=false : constaté sur le Pi 3, kmssink échoue en agrandissant l'image
+# (« drmModeSetPlane failed: No space left on device ») : image affichée à sa taille réelle.
+VIDEO_SINK = "kmssink sync=false can-scale=false"
 JITTER_LATENCY_MS = 150  # petit tampon : bon compromis fluidité / latence en Wi-Fi
 
 
@@ -47,7 +50,7 @@ def choose_decoder(model: str | None = None, hw_device_exists: bool | None = Non
 def build_command(decoder: str, alsa_device: str | None, port: int = wfd.RTP_PORT,
                   video_sink: str | None = None) -> list[str]:
     """Arguments de gst-launch-1.0 (liste : pas de shell, pas d'injection possible)."""
-    sink = video_sink or os.environ.get("BERRYCAST_VIDEO_SINK", "kmssink sync=false")
+    sink = video_sink or os.environ.get("BERRYCAST_VIDEO_SINK", VIDEO_SINK)
     audio_sink = "alsasink sync=false" + (f" device={alsa_device}" if alsa_device else "")
     description = (
         f"udpsrc port={port} buffer-size=2097152 "

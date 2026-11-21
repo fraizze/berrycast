@@ -201,7 +201,8 @@ def test_pipeline_command():
     assert cmd[:3] == ["gst-launch-1.0", "-q", "-e"]
     assert "udpsrc" in cmd and "port=1028" in cmd
     assert "caps=application/x-rtp,media=video,clock-rate=90000,encoding-name=MP2T" in cmd
-    assert "! h264parse ! v4l2h264dec !" in text and "kmssink" in text
+    assert "! h264parse ! v4l2h264dec !" in text
+    assert "kmssink sync=false can-scale=false" in text
     assert "device=plughw:CARD=vc4hdmi,DEV=0" in text and "avdec_aac" in text
 
 
@@ -376,3 +377,20 @@ def test_wait_screen_free(tmp_path):
                                            lambda: clock[0])
     cast_state.write("miracast", "connecting", run_dir=tmp_path)
     assert cast_state.other_wants_screen("airplay", tmp_path)
+
+
+def test_idr_requested_again_while_player_starts():
+    sink_sock, source_sock = socket.socketpair()
+    now = [0.0]
+    sink = RtspSink(sink_sock, "192.168.1.30", "TV", clock=lambda: now[0])
+    sent = []
+    sink.request_idr = lambda: sent.append(now[0])
+    sink.session = "1"
+    sink.pending["7"] = "PLAY"
+    sink.handle_response(wfd.RtspMessage("RTSP/1.0 200 OK", {"cseq": "7"}))
+    for t in (1.0, 2.0, 3.0, 6.0, 9.0, 20.0):
+        now[0] = t
+        sink.send_due_idr()
+    assert sent == [0.0, 2.0, 3.0, 6.0, 9.0]  # prévues à 0 ; 1,5 ; 3 ; 5 ; 8 s
+    sink_sock.close()
+    source_sock.close()
