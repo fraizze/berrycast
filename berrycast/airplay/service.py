@@ -40,6 +40,8 @@ STATE_DIR = Path(os.environ.get("STATE_DIRECTORY", "/var/lib/berrycast-airplay")
 CONTROL_PORT = 7000  # « -p » : ports TCP 7100, 7000, 7001
 MIRROR_PORT = 7100
 PIN_SHOW_SECONDS = 90
+# Niveau 2 = erreurs et avertissements ; 4 = informations des éléments v4l2 (formats)
+GST_DEBUG_LEVELS = "2,v4l2transform:4,v4l2videodec:4,v4l2:3"
 # Dessin du code par UxPlay (police FIGlet « colossal ») : uniquement ces caractères
 PIN_ART = re.compile(r"^[ 8dbPYo\".]+$")
 
@@ -168,8 +170,11 @@ class AirPlayService:
         pin_index = cmd.index("-pin") + 1
         log.info("Lancement : %s", " ".join("****" if i == pin_index else a
                                             for i, a in enumerate(cmd)))
+        # Messages de GStreamer dans le journal (avertissements + détails des éléments v4l2 :
+        # formats et tailles négociés), pour comprendre les échecs (ex. iPhone en paysage).
+        env = dict(os.environ, GST_DEBUG=os.environ.get("GST_DEBUG", GST_DEBUG_LEVELS))
         self.process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                        start_new_session=True)
+                                        start_new_session=True, env=env)
         threading.Thread(target=self.read_output, args=(self.process.stdout,),
                          daemon=True).start()
 
