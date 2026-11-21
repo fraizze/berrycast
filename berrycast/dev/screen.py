@@ -273,8 +273,12 @@ def main() -> int:
             now = time.monotonic()
             casts = cast_state.read_all()
             if is_casting(casts):
-                # La vidéo occupe l'écran : on ne dessine rien, et on redessinera ensuite
-                last_text = None
+                # La vidéo occupe l'écran : on efface le texte une fois (constaté sur le Pi :
+                # l'écran d'accueil restait visible autour de la vidéo), puis on ne dessine
+                # plus rien jusqu'à la fin ; on redessinera ensuite.
+                if last_text is not None:
+                    write_all(fd, (CLEAR + HIDE_CURSOR).encode("utf-8"))
+                    last_text = None
                 time.sleep(1)
                 continue
             if now - last_gather >= REFRESH_SECONDS:

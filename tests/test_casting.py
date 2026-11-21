@@ -201,7 +201,8 @@ def test_pipeline_command():
     assert cmd[:3] == ["gst-launch-1.0", "-q", "-e"]
     assert "udpsrc" in cmd and "port=1028" in cmd
     assert "caps=application/x-rtp,media=video,clock-rate=90000,encoding-name=MP2T" in cmd
-    assert "! capssetter caps=video/x-h264,profile=(string)high ! v4l2h264dec !" in text
+    assert "! h264parse ! v4l2h264dec !" in text
+    assert pipeline.MIRACAST_DECODER == "decodebin"  # le lecteur Miracast choisit tout seul
     assert "kmssink sync=false can-scale=false" in text
     assert "device=plughw:CARD=vc4hdmi,DEV=0" in text and "avdec_aac" in text
 
