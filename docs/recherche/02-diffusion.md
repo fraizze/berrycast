@@ -114,3 +114,13 @@ iPhone diffuse → la demande MICE du PC est refusée. Choix : **refuser** (CLAU
   Wi-Fi, économie d'énergie de la puce active (« Power save: on »). Coupée par
   NetworkManager (`wifi.powersave = 2`, `system/networkmanager/`), validé par le
   développeur le 21/11/2026.
+- **iPhone : plantage en passant en paysage.** Reproduit sur le Pi avec un flux H.264
+  qui passe de 402x872 à 1890x872 : `v4l2convert` refuse de se reconfigurer en pleine
+  diffusion (`S_FMT failed for BGR4 @ 1890x798: Invalid argument`) ; chaque taille seule
+  passe. UxPlay n'utilise plus de convertisseur : `-vc "capssetter
+  caps=video/x-raw,pixel-aspect-ratio=N/D"`, l'image décodée (YUV, DMABuf) va
+  directement à kmssink, centrée à sa taille réelle. N/D = forme de pixel que kmssink
+  attribue à l'écran, recalculée comme lui (`gst_video_calculate_device_ratio`,
+  gstkmsutils.c) depuis l'EDID (octets 21-22, en cm) : la TV de test annonce 52x32 cm
+  → 54/59. Testé : rotation portrait → paysage → portrait sans erreur ; UxPlay 1.71
+  construit bien `… ! v4l2h264dec ! capssetter … ! videoscale ! kmssink`.

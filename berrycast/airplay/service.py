@@ -30,6 +30,7 @@ from berrycast.miracast.pipeline import (
     DEFAULT_DISPLAY,
     VIDEO_SINK,
     choose_decoder,
+    display_par,
     display_size,
 )
 
@@ -79,8 +80,26 @@ def requested_size(display: tuple[int, int]) -> tuple[int, int]:
     return width, h - h % 2
 
 
+def converter(decoder: str, par: tuple[int, int]) -> str:
+    """Étape « conversion » d'UxPlay (-vc), entre le décodeur et l'écran.
+
+    Constaté sur le Pi 3 (reproduit avec une vidéo qui passe de 402x872 à 1890x872) :
+    quand l'iPhone tourne, la taille de l'image change en pleine diffusion et le
+    convertisseur matériel « v4l2convert » refuse de se reconfigurer (« S_FMT failed …
+    Invalid argument ») : UxPlay plantait. On s'en passe : l'image décodée (YUV, mémoire
+    DMABuf) va directement à kmssink, affichée centrée à sa taille réelle (aucun travail
+    du processeur). Seule correction : annoncer la forme de pixel que kmssink attribue à
+    l'écran (sinon il refuse l'image ; voir pipeline.device_par).
+    """
+    set_par = f"capssetter caps=video/x-raw,pixel-aspect-ratio={par[0]}/{par[1]}"
+    if decoder == "avdec_h264":
+        return f"videoconvert ! {set_par}"  # Pi 5 : décodage par le processeur
+    return set_par
+
+
 def build_command(device_name: str, pin: str, alsa_device: str | None,
-                  decoder: str, display: tuple[int, int] = DEFAULT_DISPLAY) -> list[str]:
+                  decoder: str, display: tuple[int, int] = DEFAULT_DISPLAY,
+                  par: tuple[int, int] = (1, 1)) -> list[str]:
     """Arguments d'UxPlay (liste : pas de shell)."""
     # stdbuf : UxPlay écrit ses messages tout de suite (sinon ils restent en mémoire et
     # arrivent par paquets, jusqu'à plusieurs minutes plus tard : constaté sur le Pi)
@@ -96,10 +115,9 @@ def build_command(device_name: str, pin: str, alsa_device: str | None,
     if decoder == "avdec_h264":
         cmd.append("-avdec")  # Pi 5 / pas de décodeur matériel
     else:
-        # Constaté sur le Pi : forte latence. UxPlay convertit l'image avec « videoconvert »
-        # (processeur) : sur Raspberry Pi, sa doc conseille le décodeur et le convertisseur
-        # matériels (v4l2h264dec, v4l2convert). -bt709 : nécessaire avec le décodeur matériel.
-        cmd += ["-vd", "v4l2h264dec", "-vc", "v4l2convert", "-bt709"]
+        # Décodeur matériel (doc UxPlay pour Raspberry Pi) ; -bt709 : nécessaire avec lui.
+        cmd += ["-vd", "v4l2h264dec", "-bt709"]
+    cmd += ["-vc", converter(decoder, par)]
     return cmd
 
 
@@ -166,7 +184,7 @@ class AirPlayService:
 
     def start(self, cfg) -> None:
         cmd = build_command(cfg.device_name, load_pin(), audio.alsa_device(cfg.audio_output),
-                            choose_decoder(), display_size())
+                            choose_decoder(), display_size(), display_par())
         pin_index = cmd.index("-pin") + 1
         log.info("Lancement : %s", " ".join("****" if i == pin_index else a
                                             for i, a in enumerate(cmd)))

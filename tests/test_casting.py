@@ -259,7 +259,14 @@ def test_uxplay_command():
     assert cmd[3:8] == ["uxplay", "-n", "TV Salon", "-nh", "-pin"] and cmd[8] == "4821"
     assert "-p" in cmd and "-bt709" in cmd and "-avdec" not in cmd
     assert cmd[cmd.index("-vd") + 1] == "v4l2h264dec"
-    assert cmd[cmd.index("-vc") + 1] == "v4l2convert"
+    # Pas de v4l2convert (plantait quand l'iPhone tourne) : forme de pixel de l'écran
+    assert cmd[cmd.index("-vc") + 1] == "capssetter caps=video/x-raw,pixel-aspect-ratio=1/1"
+    tv = airplay.build_command("X", "1111", None, "v4l2h264dec", par=(54, 59))
+    assert tv[tv.index("-vc") + 1] == "capssetter caps=video/x-raw,pixel-aspect-ratio=54/59"
+    soft = airplay.build_command("X", "1111", None, "avdec_h264", par=(54, 59))
+    assert soft[soft.index("-vc") + 1] == (
+        "videoconvert ! capssetter caps=video/x-raw,pixel-aspect-ratio=54/59")
+    assert "v4l2convert" not in " ".join(cmd)
     assert cmd[cmd.index("-vsync") + 1] == "no"
     assert cmd[cmd.index("-vs") + 1].startswith("kmssink")
     assert "-avdec" in airplay.build_command("X", "1111", None, "avdec_h264")
@@ -561,3 +568,26 @@ def test_wifi_powersave_disabled_config():
     assert "berrycast-wifi-powersave.conf" in update
     image = (root / "image" / "pi-gen" / "stage-berrycast" / "00-berrycast" / "01-run.sh")
     assert "berrycast-wifi-powersave.conf" in image.read_text(encoding="utf-8")
+
+
+def test_device_par_like_kmssink():
+    # TV de test : EDID 52x32 cm pour 1920x1080 -> 54/59 (valeur vue dans kmssink)
+    assert pipeline.device_par((1920, 1080), (520, 320)) == (54, 59)
+    assert pipeline.device_par((1920, 1080), (521, 293)) == (1, 1)  # vrai 16:9
+    assert pipeline.device_par((1920, 1080), (0, 0)) == (1, 1)  # taille inconnue
+    assert pipeline.device_par((1280, 1024), (476, 268)) == (64, 45)
+    edid = bytes(21) + bytes([52, 32]) + bytes(105)
+    assert pipeline.edid_size_mm(edid) == (520, 320)
+    assert pipeline.edid_size_mm(b"") == (0, 0)
+
+
+def test_display_par(tmp_path):
+    con = tmp_path / "card0-HDMI-A-1"
+    con.mkdir()
+    (con / "status").write_text("connected\n")
+    (con / "modes").write_text("1920x1080\n")
+    (con / "edid").write_bytes(bytes(21) + bytes([52, 32]) + bytes(105))
+    assert pipeline.display_par(tmp_path) == (54, 59)
+    (con / "edid").write_bytes(b"")
+    assert pipeline.display_par(tmp_path) == (1, 1)
+    assert pipeline.display_par(tmp_path / "absent") == (1, 1)

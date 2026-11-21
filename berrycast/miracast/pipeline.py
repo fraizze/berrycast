@@ -202,6 +202,66 @@ def screen_caps(display: tuple[int, int], dmabuf: bool) -> str:
     return f"""capsfilter caps='"{caps}"'"""
 
 
+# Formes de pixel « standard » de kmssink (gst-plugins-bad, sys/kms/gstkmsutils.c,
+# gst_video_calculate_device_ratio), dans le même ordre.
+DEVICE_PAR_MAP = ((1, 1), (16, 15), (11, 10), (54, 59), (64, 45), (5, 3), (4, 3))
+
+
+def device_par(display: tuple[int, int], size_mm: tuple[int, int]) -> tuple[int, int]:
+    """Forme de pixel que kmssink attribue à l'écran (même calcul que GStreamer).
+
+    kmssink (can-scale=false) n'accepte que des images ayant exactement cette forme de
+    pixel. Elle vient de la taille physique annoncée par la TV : la TV de test annonce
+    52x32 cm pour du 1920x1080, d'où 54/59 au lieu de 1/1.
+    """
+    width, height = display
+    width_mm, height_mm = size_mm
+    if not (width and height and width_mm and height_mm):
+        ratio = 1.0
+    else:
+        ratio = (width_mm * height) / (height_mm * width)
+
+    def delta(i: int, j: int) -> float:
+        return abs(ratio - DEVICE_PAR_MAP[i][j] / DEVICE_PAR_MAP[i][1 - j])
+
+    best, index, windex = delta(0, 0), 0, 0
+    for i in range(1, len(DEVICE_PAR_MAP)):
+        for j in (0, 1):
+            current = delta(i, j)
+            if current < best:
+                best, index, windex = current, i, j
+    return DEVICE_PAR_MAP[index][windex], DEVICE_PAR_MAP[index][windex ^ 1]
+
+
+def edid_size_mm(edid: bytes) -> tuple[int, int]:
+    """Taille physique annoncée par la TV (octets 21 et 22 de l'EDID, en cm), en mm.
+
+    C'est la valeur que le noyau transmet à kmssink (drm_edid.c : width_cm * 10).
+    """
+    if len(edid) < 23:
+        return 0, 0
+    return edid[21] * 10, edid[22] * 10
+
+
+def display_par(drm_dir: Path = DRM_DIR) -> tuple[int, int]:
+    """Forme de pixel de l'écran HDMI branché selon kmssink (1/1 si inconnue)."""
+    try:
+        connectors = sorted(drm_dir.glob("card*-HDMI-A-*"))
+    except OSError:
+        return 1, 1
+    for connector in connectors:
+        try:
+            if (connector / "status").read_text().strip() != "connected":
+                continue
+            edid = (connector / "edid").read_bytes()
+            mode = parse_mode((connector / "modes").read_text())
+        except OSError:
+            continue
+        if mode:
+            return device_par(mode, edid_size_mm(edid))
+    return 1, 1
+
+
 def video_chain(decoder: str, hw_convert: bool = True,
                 display: tuple[int, int] = DEFAULT_DISPLAY) -> str:
     """Décodage puis mise au format exact de l'écran (par la puce si possible)."""
