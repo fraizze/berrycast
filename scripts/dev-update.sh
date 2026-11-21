@@ -58,17 +58,19 @@ echo "3/5 Services systemd, droits polkit, groupes"
 install -m 644 "${SRC}"/system/dev/*.service "${SRC}"/system/dev/*.path /etc/systemd/system/
 install -d -m 755 /etc/polkit-1/rules.d
 install -m 644 "${SRC}/system/polkit/50-berrycast.rules" /etc/polkit-1/rules.d/
-usermod -a -G video,render berrycast
+usermod -a -G video,render,netdev,audio berrycast
+install -m 644 "${SRC}/system/networkmanager/berrycast-p2p.conf" /etc/NetworkManager/conf.d/
+nmcli general reload conf || true  # relit la configuration sans couper le Wi-Fi
 systemctl daemon-reload
-systemctl enable berrycast-setupui.service berrycast-setup-apply.path
+systemctl enable berrycast-setupui.service berrycast-setup-apply.path 	berrycast-miracast.service berrycast-airplay.service
 systemctl start berrycast-setup-apply.path
 
 echo "4/5 Nettoyage des essais précédents"
 rm -f /etc/NetworkManager/dnsmasq-shared.d/berrycast-captive.conf
 rm -rf /usr/share/berrycast/fonts
 
-echo "5/5 Redémarrage de l'écran HDMI"
-systemctl restart berrycast-devscreen.service
+echo "5/5 Redémarrage de l'écran HDMI, de Miracast et d'AirPlay"
+systemctl restart berrycast-devscreen.service berrycast-miracast.service berrycast-airplay.service
 systemctl --no-pager --lines=0 status berrycast-devscreen.service | head -n 3
 
 echo "Mise à jour terminée."

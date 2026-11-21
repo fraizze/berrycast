@@ -23,8 +23,10 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from berrycast import cast_state
 from berrycast.countries import WORLD_REGDOMAIN, parse_iw_reg_get
 from berrycast.dev.nm import split_terse
+from berrycast.display import bigdigits
 
 TTY = os.environ.get("BERRYCAST_TTY")  # None = sortie standard (cas normal)
 STATE_FILE = Path(os.environ.get("BERRYCAST_STATE_DIR", "/var/lib/berrycast")) / "devsetup.json"
@@ -51,6 +53,8 @@ class Info:
     messages: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     build: str = ""
+    device_name: str = "BerryCast"
+    casts: dict = field(default_factory=dict)  # état Miracast / AirPlay (cast_state)
 
 
 def nmcli(*args: str) -> str:
@@ -90,6 +94,14 @@ def gather() -> Info:
         info.messages = state.get("messages", [])
         info.errors = state.get("errors", [])
     except (OSError, ValueError):
+        pass
+
+    info.casts = cast_state.read_all()
+    try:
+        from berrycast import config
+
+        info.device_name = config.load().device_name
+    except Exception:  # l'écran ne doit jamais planter pour ça
         pass
 
     try:
@@ -153,6 +165,7 @@ def render_lines(info: Info) -> list[str]:
         lines.append(f"Pays Wi-Fi : {info.regdomain}")
     if info.ssh_password_set is False:
         warnings.append("ATTENTION : mot de passe SSH non défini (configuration au clavier)")
+    lines += cast_lines(info)
     if warnings:
         lines += [""] + warnings
 
@@ -162,6 +175,42 @@ def render_lines(info: Info) -> list[str]:
 
     if info.build:
         lines += ["", f"version {info.build}"]
+    return lines
+
+
+def cast_lines(info: Info) -> list[str]:
+    """Comment diffuser sur cet écran, avec les codes à taper."""
+    mira = info.casts.get("miracast", {})
+    air = info.casts.get("airplay", {})
+    lines = []
+    if mira.get("state") in ("ready", "pin", "connecting"):
+        lines += ["", f"PC Windows : touches Windows + K, puis « {info.device_name} »",
+                  f"   code : {mira.get('pin', '')}"]
+    if air.get("state") in ("ready", "pin", "connecting"):
+        lines += ["", f"iPhone / iPad / Mac : « Recopie de l'écran », puis « {info.device_name} »",
+                  f"   code (1re fois) : {air.get('pin', '')}"]
+    return lines
+
+
+def pin_request(casts: dict) -> tuple[str, dict] | None:
+    """(source, état) si un appareil attend un code, sinon None."""
+    for source in ("miracast", "airplay"):
+        if casts.get(source, {}).get("state") == "pin":
+            return source, casts[source]
+    return None
+
+
+def is_casting(casts: dict) -> bool:
+    return any(c.get("state") == "casting" for c in casts.values())
+
+
+def pin_lines(source: str, state: dict, device_name: str) -> list[str]:
+    """Écran « code à saisir » : le code EN GRAND (lisible à plusieurs mètres)."""
+    who = "le PC" if source == "miracast" else "l'iPhone"
+    peer = state.get("peer") or ""
+    lines = [f"Code à saisir sur {who}" + (f" « {peer} »" if peer else ""), ""]
+    lines += bigdigits.render(str(state.get("pin", "")))
+    lines += ["", str(state.get("pin", "")), "", f"Écran « {device_name} »"]
     return lines
 
 
@@ -217,11 +266,25 @@ def main() -> int:
         )
     fd = open_output()
     last_text, last_full, failures = None, 0.0, 0
+    info, last_gather = Info(), 0.0
     while True:
         try:
-            cols, rows = terminal_size(fd)
-            lines = render_lines(gather())
             now = time.monotonic()
+            casts = cast_state.read_all()
+            if is_casting(casts):
+                # La vidéo occupe l'écran : on ne dessine rien, et on redessinera ensuite
+                last_text = None
+                time.sleep(1)
+                continue
+            if now - last_gather >= REFRESH_SECONDS:
+                info, last_gather = gather(), now
+            info.casts = casts
+            cols, rows = terminal_size(fd)
+            request = pin_request(casts)
+            if request:
+                lines = pin_lines(request[0], request[1], info.device_name)
+            else:
+                lines = render_lines(info)
             if lines != last_text or now - last_full > FULL_REDRAW_SECONDS:
                 write_all(fd, layout(lines, cols, rows).encode("utf-8"))
                 last_text, last_full = lines, now
@@ -232,7 +295,7 @@ def main() -> int:
             if failures >= 3:
                 # On quitte : systemd relance le service et rouvre proprement tty1.
                 return 1
-        time.sleep(REFRESH_SECONDS)
+        time.sleep(1)  # vérifie les diffusions chaque seconde (code PIN affiché vite)
 
 
 if __name__ == "__main__":

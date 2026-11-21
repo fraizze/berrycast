@@ -51,6 +51,11 @@ C'est prêt : votre BerryCast apparaît dans Windows + K et dans la recopie de l
   afficheront un écran noir. C'est une limite volontaire, qui ne sera pas contournée.
 - **Une seule diffusion à la fois** : si quelqu'un diffuse déjà, il faut attendre qu'il arrête.
 
+## Remerciements
+
+La partie Miracast s'inspire de [lazycast](https://github.com/homeworkc/lazycast)
+(Hsun-Wei Cho, GPL-3.0). La partie AirPlay utilise [UxPlay](https://github.com/FDH2/UxPlay) (GPL-3.0).
+
 ## Licence
 
 BerryCast est un logiciel libre, distribué sous licence **GNU GPL version 3 ou toute version ultérieure**

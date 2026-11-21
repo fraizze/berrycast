@@ -51,6 +51,11 @@ Done: your BerryCast shows up in Windows + K and in the iPhone's Screen Mirrorin
   will show a black screen. This is a deliberate limitation and will not be worked around.
 - **One stream at a time**: if someone is already casting, you have to wait until they stop.
 
+## Acknowledgements
+
+The Miracast part is inspired by [lazycast](https://github.com/homeworkc/lazycast)
+(Hsun-Wei Cho, GPL-3.0). The AirPlay part uses [UxPlay](https://github.com/FDH2/UxPlay) (GPL-3.0).
+
 ## License
 
 BerryCast is free software, released under the **GNU GPL version 3 or any later version**

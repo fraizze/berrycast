@@ -17,6 +17,9 @@ chmod -R u=rwX,go=rX "${ROOTFS_DIR}/opt/berrycast"
 # 2. Services systemd de l'image de développement
 install -m 644 "${SRC}"/system/dev/*.service "${SRC}"/system/dev/*.path 	"${ROOTFS_DIR}/etc/systemd/system/"
 
+# NetworkManager ne gère pas les groupes Wi-Fi Direct de Miracast (p2p-wlan0-*)
+install -m 644 "${SRC}/system/networkmanager/berrycast-p2p.conf" 	"${ROOTFS_DIR}/etc/NetworkManager/conf.d/"
+
 # Droits polkit minimaux de l'utilisateur berrycast (ex. : relancer la recherche des Wi-Fi)
 install -d -m 755 "${ROOTFS_DIR}/etc/polkit-1/rules.d"
 install -m 644 "${SRC}/system/polkit/50-berrycast.rules" "${ROOTFS_DIR}/etc/polkit-1/rules.d/"
@@ -36,7 +39,8 @@ if ! id -u berrycast >/dev/null 2>&1; then
 fi
 # Pas de groupe tty : c'est systemd qui ouvre l'écran tty1 pour le service (StandardOutput=tty).
 # Groupes video et render : affichage graphique (interface de configuration pygame, vidéo).
-usermod -a -G video,render berrycast
+# + netdev (Wi-Fi Direct via wpa_supplicant) et audio (son Miracast / AirPlay).
+usermod -a -G video,render,netdev,audio berrycast
 install -d -m 755 /var/lib/berrycast
 
 # Aucun mot de passe connu : on verrouille celui (aléatoire) donné à la construction.
@@ -45,7 +49,7 @@ usermod -p '!' ${FIRST_USER_NAME}
 
 # Services : berrycast-wifi.txt au démarrage, écran HDMI (à la place de l'invite de
 # connexion sur tty1), configuration au clavier si pas de Wi-Fi, et son application (root)
-systemctl enable berrycast-devsetup.service berrycast-devscreen.service 	berrycast-setupui.service berrycast-setup-apply.path
+systemctl enable berrycast-devsetup.service berrycast-devscreen.service 	berrycast-setupui.service berrycast-setup-apply.path 	berrycast-miracast.service berrycast-airplay.service
 systemctl mask getty@tty1.service
 
 # cloud-init complètement désactivé (c'est berrycast-wifi.txt qui configure le Wi-Fi)
