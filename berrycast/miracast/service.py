@@ -57,6 +57,7 @@ class MiracastService:
         self.pin = ""
         self.session: RtspSink | None = None
         self.player: Player | None = None
+        self.last_error = ""
 
     # ---- Réseau du groupe ---------------------------------------------------------
 
@@ -80,9 +81,18 @@ class MiracastService:
                 self.dhcp.kill()
         self.dhcp = None
 
+    def report_error(self, exc: Exception) -> None:
+        """Journalise une erreur sans répéter 100 fois la même trace (elle revient toutes
+        les 10 s tant que le problème dure)."""
+        message = f"{type(exc).__name__}: {exc}"
+        if message != self.last_error:
+            log.error("Wi-Fi Direct indisponible : %s (nouvel essai toutes les 10 s)", message,
+                      exc_info=not isinstance(exc, (P2PError, subprocess.CalledProcessError)))
+            self.last_error = message
+
     def new_pin(self) -> None:
         self.pin = wfd.new_pin()
-        self.p2p.allow_pin(self.pin)
+        self.p2p.allow_pin(self.pin, self.ifname)
         cast_state.write(SOURCE, "ready", pin=wfd.format_pin(self.pin))
 
     # ---- Session ----------------------------------------------------------------------
@@ -140,23 +150,21 @@ class MiracastService:
             while not self.stop_event.is_set():
                 try:
                     group_path, ifname = self.p2p.ensure_group()
-                    if group_path != self.group_path:
+                    group_key = group_path or ifname
+                    if group_key != self.group_path:
                         self.pin = ""  # nouveau groupe : il faut lui redonner le PIN
-                        self.group_path = group_path
+                        self.group_path = group_key
                     self.setup_network(ifname)
                     if not self.pin:
                         self.new_pin()
-                except (P2PError, subprocess.CalledProcessError, OSError) as exc:
-                    log.error("Wi-Fi Direct indisponible : %s (nouvel essai dans 10 s)", exc)
+                except Exception as exc:  # P2P, D-Bus, réseau : on réessaie dans 10 s
+                    self.report_error(exc)
                     cast_state.write(SOURCE, "off")
                     self.pin = ""
+                    self.group_path = None
                     self.stop_event.wait(10)
                     continue
-                except Exception as exc:  # erreur D-Bus inattendue : on réessaie
-                    log.exception("Erreur Wi-Fi Direct : %s", exc)
-                    self.pin = ""
-                    self.stop_event.wait(10)
-                    continue
+                self.last_error = ""
 
                 sock = self.try_connect()
                 if sock is None:

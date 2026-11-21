@@ -22,6 +22,8 @@ wpa_supplicant sur Debian/Raspberry Pi OS). Pas besoin de root.
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
 import time
 
 from berrycast.miracast import wfd
@@ -35,6 +37,8 @@ P2P = IFACE + ".P2PDevice"
 WPS = IFACE + ".WPS"
 BSS = WPA + ".BSS"
 PROPS = "org.freedesktop.DBus.Properties"
+NET_DIR = "/sys/class/net"
+CTRL_DIR = "/run/wpa_supplicant"  # sockets de contrôle de wpa_supplicant (groupe netdev)
 GROUP_PREFIX = "p2p-"  # p2p-wlan0-0 (mais pas p2p-dev-wlan0, l'interface interne)
 
 
@@ -98,9 +102,43 @@ class WifiDirect:
         except self.dbus.DBusException:
             return None
 
+    def group_netdevs(self) -> list[str]:
+        """Interfaces réseau des groupes Wi-Fi Direct présentes sur le système."""
+        try:
+            names = os.listdir(NET_DIR)
+        except OSError:
+            return []
+        return sorted(n for n in names if is_group_ifname(n))
+
+    def wpa_cli(self, ifname: str, *args: str) -> str:
+        """Commande de contrôle de wpa_supplicant (secours quand D-Bus ne voit pas le groupe)."""
+        try:
+            return subprocess.run(["wpa_cli", "-p", CTRL_DIR, "-i", ifname, *args],
+                                  capture_output=True, text=True, timeout=10).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return ""
+
+    def managed(self, ifname: str) -> bool:
+        """wpa_supplicant gère-t-il cette interface ?"""
+        return self.wpa_cli(ifname, "ping") == "PONG"
+
     def find_group(self) -> tuple[str, str] | None:
-        """(chemin D-Bus, nom) de l'interface du groupe existant, sinon None."""
-        paths = self.wpa.Get(WPA, "Interfaces", dbus_interface=PROPS)
+        """(chemin D-Bus, nom) de l'interface du groupe existant, sinon None.
+
+        Constaté sur le Pi : le groupe (p2p-wlan0-0) n'apparaît pas forcément dans la
+        propriété « Interfaces » de wpa_supplicant. On part donc des interfaces réseau du
+        système et on demande à wpa_supplicant leur objet D-Bus (GetInterface).
+        """
+        for name in self.group_netdevs():
+            try:
+                return str(self.wpa.GetInterface(name, dbus_interface=WPA)), name
+            except self.dbus.DBusException:
+                if self.managed(name):
+                    return "", name  # géré, mais sans objet D-Bus : on passera par wpa_cli
+        try:  # second moyen : la liste des interfaces de wpa_supplicant
+            paths = self.wpa.Get(WPA, "Interfaces", dbus_interface=PROPS)
+        except self.dbus.DBusException:
+            return None
         for path in paths:
             try:
                 obj = self.bus.get_object(WPA, path)
@@ -111,53 +149,72 @@ class WifiDirect:
                 return str(path), name
         return None
 
+    def remove_orphans(self) -> None:
+        """Supprime les interfaces de groupe que wpa_supplicant ne gère plus : la puce n'en
+        accepte qu'une, une orpheline empêcherait de créer le groupe (« resource busy »)."""
+        for name in self.group_netdevs():
+            if self.managed(name):
+                continue  # jamais supprimer un groupe que wpa_supplicant gère
+            log.warning("Interface Wi-Fi Direct orpheline %s : suppression", name)
+            subprocess.run(["iw", "dev", name, "del"], capture_output=True, check=False)
+
     def ensure_group(self, timeout: float = 20) -> tuple[str, str]:
         """Crée le groupe s'il n'existe pas ; renvoie (chemin D-Bus, nom d'interface)."""
         found = self.find_group()
         if found:
             self.group_path = found[0]
             return found
+        self.remove_orphans()
         dbus = self.dbus
         try:  # découverte « progressive », comme lazycast (aide Windows à nous voir)
             self.iface.Find(dbus.Dictionary({"DiscoveryType": dbus.String("progressive")},
                                             signature="sv"), dbus_interface=P2P)
         except dbus.DBusException as exc:
             log.warning("P2P Find : %s", exc)
-        args = {"persistent": dbus.Boolean(True)}
         freq = self.station_frequency()
-        if freq:
-            args["frequency"] = dbus.Int32(freq)
         log.info("Création du groupe Wi-Fi Direct (fréquence %s)", freq or "auto")
-        try:
-            self.iface.GroupAdd(dbus.Dictionary(args, signature="sv"), dbus_interface=P2P)
-        except dbus.DBusException as exc:
-            if freq:  # canal refusé : on laisse wpa_supplicant choisir
-                log.warning("GroupAdd sur %s MHz refusé (%s), essai sans fréquence", freq, exc)
-                self.iface.GroupAdd(dbus.Dictionary({"persistent": dbus.Boolean(True)},
-                                                    signature="sv"), dbus_interface=P2P)
-            else:
-                raise P2PError(f"création du groupe impossible : {exc}") from exc
+        attempts = []
+        if freq:  # même canal que la box d'abord, sinon wpa_supplicant choisit
+            attempts.append({"persistent": dbus.Boolean(True), "frequency": dbus.Int32(freq)})
+        attempts.append({"persistent": dbus.Boolean(True)})
+        error = None
+        for args in attempts:
+            try:
+                self.iface.GroupAdd(dbus.Dictionary(args, signature="sv"), dbus_interface=P2P)
+                error = None
+                break
+            except dbus.DBusException as exc:
+                error = exc
+                log.warning("GroupAdd %s refusé : %s", dict(args), exc.get_dbus_message())
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             found = self.find_group()
-            if found:
+            if found:  # même si GroupAdd a répondu une erreur, le groupe peut exister
                 self.group_path = found[0]
                 log.info("Groupe prêt : %s", found[1])
                 return found
+            if error is not None:
+                break
             time.sleep(0.5)
-        raise P2PError("le groupe Wi-Fi Direct n'est pas apparu")
+        raise P2PError(f"création du groupe impossible ({error or 'pas apparu'})")
 
-    def allow_pin(self, pin: str) -> None:
+    def allow_pin(self, pin: str, ifname: str = "") -> None:
         """Accepte le prochain PC qui tape ce PIN (une seule fois)."""
-        if not self.group_path:
+        if self.group_path:
+            group = self.bus.get_object(WPA, self.group_path)
+            dbus = self.dbus
+            group.Start(dbus.Dictionary({
+                "Role": dbus.String("registrar"),
+                "Type": dbus.String("pin"),
+                "Pin": dbus.String(pin),
+            }, signature="sv"), dbus_interface=WPS)
+        elif ifname:
+            # Même effet que « wps_pin any <PIN> » de lazycast ; renvoie le PIN si accepté
+            answer = self.wpa_cli(ifname, "wps_pin", "any", pin)
+            if answer != pin:
+                raise P2PError(f"PIN refusé par wpa_supplicant : {answer or 'pas de réponse'}")
+        else:
             raise P2PError("pas de groupe")
-        group = self.bus.get_object(WPA, self.group_path)
-        dbus = self.dbus
-        group.Start(dbus.Dictionary({
-            "Role": dbus.String("registrar"),
-            "Type": dbus.String("pin"),
-            "Pin": dbus.String(pin),
-        }, signature="sv"), dbus_interface=WPS)
         log.info("Code PIN Miracast prêt")
 
     def remove_group(self) -> None:

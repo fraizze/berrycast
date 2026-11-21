@@ -297,3 +297,82 @@ def test_screen_shows_codes_and_pin_request():
     assert "iPhone" in lines[0] and "4821" in lines
     assert is_casting({"miracast": {"state": "casting"}})
     assert not is_casting(casts)
+
+
+# --- Wi-Fi Direct : retrouver le groupe (constaté sur le Pi : absent d'« Interfaces ») -----
+
+
+class FakeDBusException(Exception):
+    def get_dbus_message(self):
+        return str(self)
+
+
+class FakeDbusModule:
+    DBusException = FakeDBusException
+
+
+class FakeWpa:
+    def __init__(self, known):
+        self.known = known  # noms que GetInterface connaît
+
+    def GetInterface(self, name, dbus_interface=None):  # noqa: N802 (nom de l'API D-Bus)
+        if name in self.known:
+            return f"/fi/w1/wpa_supplicant1/Interfaces/{name}"
+        raise FakeDBusException("fi.w1.wpa_supplicant1.InterfaceUnknown")
+
+    def Get(self, *args, **kw):  # noqa: N802
+        return []  # comme sur le Pi : le groupe n'apparaît pas dans « Interfaces »
+
+
+def fake_wifi_direct(tmp_path, netdevs, known=(), managed=()):
+    from berrycast.miracast import p2p
+
+    net = tmp_path / "net"
+    net.mkdir()
+    for name in netdevs:
+        (net / name).mkdir()
+    wd = p2p.WifiDirect.__new__(p2p.WifiDirect)
+    wd.dbus, wd.wpa, wd.group_path = FakeDbusModule, FakeWpa(known), None
+    calls = []
+
+    def fake_cli(ifname, *args):
+        calls.append((ifname,) + args)
+        if args == ("ping",):
+            return "PONG" if ifname in managed else ""
+        if args[:2] == ("wps_pin", "any"):
+            return args[2]
+        return ""
+
+    wd.wpa_cli = fake_cli
+    return wd, calls, net
+
+
+def test_find_group_by_netdev_name(tmp_path, monkeypatch):
+    from berrycast.miracast import p2p
+
+    wd, _, net = fake_wifi_direct(tmp_path, ["wlan0", "p2p-dev-wlan0", "p2p-wlan0-0"],
+                                  known=["p2p-wlan0-0"])
+    monkeypatch.setattr(p2p, "NET_DIR", str(net))
+    assert wd.find_group() == ("/fi/w1/wpa_supplicant1/Interfaces/p2p-wlan0-0", "p2p-wlan0-0")
+
+
+def test_group_without_dbus_object_uses_wpa_cli(tmp_path, monkeypatch):
+    from berrycast.miracast import p2p
+
+    wd, calls, net = fake_wifi_direct(tmp_path, ["p2p-wlan0-0"], managed=["p2p-wlan0-0"])
+    monkeypatch.setattr(p2p, "NET_DIR", str(net))
+    assert wd.find_group() == ("", "p2p-wlan0-0")
+    wd.allow_pin("12345670", "p2p-wlan0-0")
+    assert ("p2p-wlan0-0", "wps_pin", "any", "12345670") in calls
+
+
+def test_remove_orphans_never_touches_managed_group(tmp_path, monkeypatch):
+    from berrycast.miracast import p2p
+
+    wd, _, net = fake_wifi_direct(tmp_path, ["p2p-wlan0-0", "p2p-wlan0-1"],
+                                  managed=["p2p-wlan0-0"])
+    monkeypatch.setattr(p2p, "NET_DIR", str(net))
+    deleted = []
+    monkeypatch.setattr(p2p.subprocess, "run", lambda cmd, **kw: deleted.append(cmd))
+    wd.remove_orphans()
+    assert deleted == [["iw", "dev", "p2p-wlan0-1", "del"]]
