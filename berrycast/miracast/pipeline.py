@@ -1,7 +1,7 @@
 """Lecteur vidéo Miracast : GStreamer (gst-launch-1.0), plein écran sur l'HDMI sans bureau.
 
 Flux reçu : RTP (UDP 1028) contenant du MPEG-TS, avec vidéo H.264 et son AAC.
-  udpsrc -> rtpjitterbuffer -> rtpmp2tdepay -> tsdemux
+  udpsrc -> rtpmp2tdepay -> tsdemux
      vidéo : h264parse -> décodeur -> kmssink (écran HDMI, via KMS/DRM)
      son   : aacparse -> avdec_aac -> alsasink (HDMI ou jack)
 
@@ -53,7 +53,11 @@ AUDIO_OUT_CAPS = "audio/x-raw,format=S16LE,rate=48000,channels=2"
 # Tampon de réception UDP (limité par net.core.rmem_max : system/sysctl/90-berrycast.conf)
 UDP_BUFFER_BYTES = 4 * 1024 * 1024
 UDP_TABLES = (Path("/proc/net/udp"), Path("/proc/net/udp6"))
-JITTER_LATENCY_MS = 150  # petit tampon : bon compromis fluidité / latence en Wi-Fi
+# Pas de « rtpjitterbuffer » : constaté sur le Pi 3, couleurs qui bavent et gels même en
+# 640x480. Le Wi-Fi du Pi livre les paquets par paquets groupés (économie d'énergie) ;
+# rtpjitterbuffer jetait ceux arrivés plus de 150 ms après l'heure prévue, et l'image se
+# corrompait jusqu'à la prochaine image complète. Sur une liaison Wi-Fi directe les paquets
+# arrivent dans l'ordre : le réordonnancement est inutile (lazycast n'en a pas non plus).
 
 
 def pi_model() -> str:
@@ -217,7 +221,7 @@ def build_command(decoder: str, alsa_device: str | None, port: int = wfd.RTP_POR
     description = (
         f"udpsrc port={port} buffer-size={UDP_BUFFER_BYTES} "
         "caps=\"application/x-rtp,media=video,clock-rate=90000,encoding-name=MP2T\" "
-        f"! rtpjitterbuffer latency={JITTER_LATENCY_MS} ! rtpmp2tdepay "
+        "! rtpmp2tdepay "
         "! tsdemux name=demux "
         f"demux. ! queue max-size-time=0 max-size-buffers=0 ! h264parse "
         f"! {video_chain(decoder, hw_convert, display)} ! {sink} "

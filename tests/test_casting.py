@@ -211,6 +211,8 @@ def test_pipeline_command():
     # Un seul argument pour gst-launch, guillemets compris (liste de formats « ; »)
     assert full.split(" ", 1)[1] in cmd
     assert "videoscale" not in text
+    assert "rtpjitterbuffer" not in text  # jetait les paquets arrivés en retard
+    assert "! rtpmp2tdepay ! tsdemux" in text
     assert "device=plughw:CARD=vc4hdmi,DEV=0" in text and "avdec_aac" in text
     # Secours (profil refusé par le décodeur) : décodage logiciel, conversion par la puce
     soft = " ".join(pipeline.build_command("avdec_h264", None))
@@ -438,14 +440,15 @@ def test_video_formats_constrained_baseline_fitting_display():
     assert len(fields) == 13
     # Constrained Baseline seulement (le décodeur du Pi refuse « constrained-high »), niveau 4.1
     assert fields[2] == "01" and fields[3] == "08"
-    assert int(fields[4], 16) == (1 << 0) | (1 << 5) | (1 << 7)  # 640x480p60, 720p30, 1080p30
+    # 640x480p60, 720p30, 720p60, 1080p30
+    assert int(fields[4], 16) == (1 << 0) | (1 << 5) | (1 << 6) | (1 << 7)
     assert fields[5] == "00000000" and fields[6] == "00000000"  # ni VESA ni HH
     # Mode natif = le meilleur proposé (sinon Windows prend 640x480 : image floue, étirée)
     assert fields[0] == "38"  # CEA n° 7 : 1920x1080p30
-    assert wfd.video_formats((1280, 720)).split()[0] == "28"  # CEA n° 5 : 1280x720p30
+    assert wfd.video_formats((1280, 720)).split()[0] == "30"  # CEA n° 6 : 1280x720p60
     assert wfd.video_formats((1024, 768)).split()[0] == "00"  # CEA n° 0 : 640x480p60
     # Seulement les modes qui tiennent dans l'écran
-    assert int(wfd.video_formats((1280, 720)).split()[4], 16) == (1 << 0) | (1 << 5)
+    assert int(wfd.video_formats((1280, 720)).split()[4], 16) == (1 << 0) | (1 << 5) | (1 << 6)
     assert int(wfd.video_formats((1024, 768)).split()[4], 16) == 1 << 0
     body = wfd.answer_get_parameter(["wfd_video_formats"], "X", (1280, 720))
     assert body == f"wfd_video_formats: {wfd.video_formats((1280, 720))}\r\n"
@@ -525,7 +528,7 @@ def test_pi3_asks_windows_for_720p():
     assert pipeline.stream_size((1280, 720), 720) == (1280, 720)
     # 720p : seulement 640x480 (obligatoire) et 1280x720p30 proposés
     mask = int(wfd.video_formats(pipeline.stream_size((1920, 1080), 720)).split()[4], 16)
-    assert mask == (1 << 0) | (1 << 5)
+    assert mask == (1 << 0) | (1 << 5) | (1 << 6)
 
 
 def test_udp_drops():

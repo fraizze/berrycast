@@ -36,9 +36,13 @@ AUDIO_CODECS = "AAC 00000001 00"
 # spécification Wi-Fi Display, et accepté par le décodeur matériel du Pi (constaté :
 # v4l2h264dec accepte baseline, constrained-baseline, main, high, mais PAS le
 # « constrained-high » que Windows envoyait). Niveau 4.1 (0x08).
-# Modes CEA (bits) : 0 = 640x480p60 (obligatoire), 5 = 1280x720p30, 7 = 1920x1080p30 ;
-# seulement ceux qui tiennent dans l'écran (le Pi 3 ne sait pas agrandir l'image).
-CEA_640x480P60, CEA_1280x720P30, CEA_1920x1080P30 = 1 << 0, 1 << 5, 1 << 7
+# Modes CEA (bits) : 0 = 640x480p60 (obligatoire), 5 = 1280x720p30, 6 = 1280x720p60,
+# 7 = 1920x1080p30 ; seulement ceux qui tiennent dans l'écran.
+# Constaté avec Windows 11 : 1920x1080p30 accepté, mais avec seulement 1280x720p30 il
+# choisissait 640x480p60 (il ne semble pas produire de 720p à 30 images/s) : on propose
+# aussi 1280x720p60 (accepté par le décodeur du Pi 3 au niveau 4.1).
+CEA_640x480P60, CEA_1280x720P30, CEA_1280x720P60, CEA_1920x1080P30 = (
+    1 << 0, 1 << 5, 1 << 6, 1 << 7)
 PROFILE_CBP = "01"
 LEVEL_41 = "08"
 
@@ -54,7 +58,7 @@ def video_formats(display: tuple[int, int] = (1920, 1080)) -> str:
     width, height = display
     cea = CEA_640x480P60
     if width >= 1280 and height >= 720:
-        cea |= CEA_1280x720P30
+        cea |= CEA_1280x720P30 | CEA_1280x720P60
     if width >= 1920 and height >= 1080:
         cea |= CEA_1920x1080P30
     native = (cea.bit_length() - 1) << 3  # numéro du mode le plus haut, table CEA (0)
