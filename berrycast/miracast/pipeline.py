@@ -8,8 +8,12 @@ Flux reçu : RTP (UDP 1028) contenant du MPEG-TS, avec vidéo H.264 et son AAC.
 Décodeur : matériel « v4l2h264dec » si le Pi en a un (Pi 3, 4, Zero 2 W : /dev/video10
 du pilote bcm2835-codec), sinon logiciel « avdec_h264 » (Pi 5 : pas de décodeur H.264).
 
-La chaîne vidéo est la même que celle d'UxPlay, qui fonctionne sur le Pi 3 (constaté) :
-  h264parse ! v4l2h264dec ! v4l2convert ! videoscale ! kmssink can-scale=false
+Mise à la taille de l'écran par la puce (« v4l2convert », /dev/video12) et non par le
+processeur. Constaté sur le Pi 3 : avec « videoscale » (processeur), chaque image 1080p
+était recalculée (kmssink can-scale=false n'accepte que la taille ET la forme de pixel
+exactes de l'écran, calculée d'après ses dimensions physiques) : trop lent, les images
+s'accumulaient (~20 s de retard). v4l2convert sait produire exactement ce format.
+  h264parse ! v4l2h264dec ! queue (perte des images en trop) ! v4l2convert ! kmssink
 """
 
 from __future__ import annotations
@@ -29,6 +33,11 @@ from berrycast.miracast import wfd
 log = logging.getLogger("berrycast.miracast.pipeline")
 
 HW_DECODER_DEVICE = Path("/dev/video10")  # décodeur H.264 matériel (bcm2835-codec)
+HW_CONVERTER_DEVICE = Path("/dev/video12")  # conversion / mise à l'échelle matérielle (ISP)
+# Garde-fou : si l'affichage prend du retard, on saute des images décodées au lieu de les
+# empiler (sinon le retard grandit sans fin). Ne jamais jeter les données AVANT le décodeur :
+# une image manquante abîmerait toutes les suivantes.
+DROP_LATE_FRAMES = "queue leaky=downstream max-size-buffers=2 max-size-bytes=0 max-size-time=0"
 # can-scale=false : constaté sur le Pi 3, kmssink échoue en agrandissant l'image
 # (« drmModeSetPlane failed: No space left on device ») : image affichée à sa taille réelle.
 VIDEO_SINK = "kmssink sync=false can-scale=false"
@@ -125,15 +134,22 @@ def read_udp_tables() -> list[str]:
     return tables
 
 
-def video_chain(decoder: str) -> str:
-    """Décodage + conversion, comme UxPlay : matériel (v4l2) ou logiciel (Pi 5)."""
-    if decoder == "v4l2h264dec":
-        return "v4l2h264dec ! v4l2convert ! videoscale"
-    return "avdec_h264 ! videoconvert ! videoscale"
+def has_hw_converter(model: str | None = None, device_exists: bool | None = None) -> bool:
+    """Le Pi a-t-il le convertisseur matériel v4l2convert (Pi 3, 4, Zero 2 W) ?"""
+    model = pi_model() if model is None else model
+    if device_exists is None:
+        device_exists = HW_CONVERTER_DEVICE.exists()
+    return device_exists and "Raspberry Pi 5" not in model
+
+
+def video_chain(decoder: str, hw_convert: bool = True) -> str:
+    """Décodage puis mise au format de l'écran (par la puce si possible)."""
+    convert = "v4l2convert" if hw_convert else "videoconvert ! videoscale"
+    return f"{decoder} ! {DROP_LATE_FRAMES} ! {convert}"
 
 
 def build_command(decoder: str, alsa_device: str | None, port: int = wfd.RTP_PORT,
-                  video_sink: str | None = None) -> list[str]:
+                  video_sink: str | None = None, hw_convert: bool = True) -> list[str]:
     """Arguments de gst-launch-1.0 (liste : pas de shell, pas d'injection possible)."""
     sink = video_sink or os.environ.get("BERRYCAST_VIDEO_SINK", VIDEO_SINK)
     audio_sink = "alsasink sync=false" + (f" device={alsa_device}" if alsa_device else "")
@@ -143,11 +159,13 @@ def build_command(decoder: str, alsa_device: str | None, port: int = wfd.RTP_POR
         f"! rtpjitterbuffer latency={JITTER_LATENCY_MS} ! rtpmp2tdepay "
         "! tsdemux name=demux "
         f"demux. ! queue max-size-time=0 max-size-buffers=0 ! h264parse "
-        f"! {video_chain(decoder)} ! {sink} "
+        f"! {video_chain(decoder, hw_convert)} ! {sink} "
         "demux. ! queue max-size-time=0 max-size-buffers=0 ! aacparse ! avdec_aac "
         f"! audioconvert ! audioresample ! {audio_sink}"
     )
-    return ["gst-launch-1.0", "-q", "-e"] + shlex.split(description)
+    # -v : formats choisis entre chaque étape écrits dans le journal (taille, forme des
+    # pixels, mémoire) : indispensable pour comprendre un écran noir ou un retard.
+    return ["gst-launch-1.0", "-v", "-e"] + shlex.split(description)
 
 
 class Player:
@@ -164,7 +182,8 @@ class Player:
         decoder = "avdec_h264" if software else decoder_for_profile(choose_decoder(), profile)
         if profile is not None:
             log.info("Profil H.264 choisi par la source : 0x%02X -> décodeur %s", profile, decoder)
-        cmd = build_command(decoder, audio.alsa_device(self.audio_output))
+        cmd = build_command(decoder, audio.alsa_device(self.audio_output),
+                            hw_convert=has_hw_converter())
         log.info("Lecteur : %s", " ".join(cmd))
         # Nouveau groupe de processus : on pourra tout arrêter d'un coup
         # GST_DEBUG=2 : erreurs et avertissements de GStreamer dans le journal (diagnostic)

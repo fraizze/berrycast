@@ -78,3 +78,11 @@ iPhone diffuse → la demande MICE du PC est refusée. Choix : **refuser** (CLAU
   avant PLAY) ; et le tampon de réception UDP était limité à ~200 Ko
   (`net.core.rmem_max`, porté à 8 Mo par `system/sysctl/90-berrycast.conf`). L'iPhone
   n'a pas ce problème : AirPlay passe par TCP, qui renvoie les morceaux perdus.
+- **Windows : ~20 s de retard.** `kmssink can-scale=false` n'accepte que la taille de
+  l'écran *et* la forme de pixel qu'il calcule d'après les dimensions physiques de la TV
+  (code de kmssink). `videoscale` recalculait donc chaque image 1080p par le processeur :
+  trop lent sur le Pi 3, les images s'empilaient. `v4l2convert` (puce ISP) enlève taille
+  et forme de pixel de ses contraintes : il produit directement le format de l'écran.
+  Chaîne Windows : `v4l2h264dec ! queue leaky ! v4l2convert ! kmssink`. La file
+  « leaky » saute des images décodées si l'affichage prend du retard, au lieu de les
+  empiler. `gst-launch -v` écrit les formats négociés dans le journal.

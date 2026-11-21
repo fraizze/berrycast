@@ -199,15 +199,27 @@ def test_decoder_choice():
 def test_pipeline_command():
     cmd = pipeline.build_command("v4l2h264dec", "plughw:CARD=vc4hdmi,DEV=0")
     text = " ".join(cmd)
-    assert cmd[:3] == ["gst-launch-1.0", "-q", "-e"]
+    assert cmd[:3] == ["gst-launch-1.0", "-v", "-e"]
     assert "udpsrc" in cmd and "port=1028" in cmd
     assert "caps=application/x-rtp,media=video,clock-rate=90000,encoding-name=MP2T" in cmd
-    # Même chaîne qu'UxPlay (qui fonctionne sur le Pi 3)
-    assert ("! h264parse ! v4l2h264dec ! v4l2convert ! videoscale "
+    # Mise à l'échelle par la puce (v4l2convert), jamais par le processeur (videoscale)
+    drop = "queue leaky=downstream max-size-buffers=2 max-size-bytes=0 max-size-time=0"
+    assert (f"! h264parse ! v4l2h264dec ! {drop} ! v4l2convert "
             "! kmssink sync=false can-scale=false" in text)
-    soft = " ".join(pipeline.build_command("avdec_h264", None))
-    assert "! h264parse ! avdec_h264 ! videoconvert ! videoscale ! kmssink" in soft
+    assert "videoscale" not in text
     assert "device=plughw:CARD=vc4hdmi,DEV=0" in text and "avdec_aac" in text
+    # Secours (profil refusé par le décodeur) : décodage logiciel, conversion par la puce
+    soft = " ".join(pipeline.build_command("avdec_h264", None))
+    assert f"! h264parse ! avdec_h264 ! {drop} ! v4l2convert ! kmssink" in soft
+    # Pi 5 : ni décodeur ni convertisseur matériels
+    pi5 = " ".join(pipeline.build_command("avdec_h264", None, hw_convert=False))
+    assert "! avdec_h264 ! " + drop + " ! videoconvert ! videoscale ! kmssink" in pi5
+
+
+def test_hw_converter():
+    assert pipeline.has_hw_converter("Raspberry Pi 3 Model B Rev 1.2", True)
+    assert not pipeline.has_hw_converter("Raspberry Pi 3 Model B Rev 1.2", False)
+    assert not pipeline.has_hw_converter("Raspberry Pi 5 Model B Rev 1.0", True)
 
 
 CARDS = """ 0 [Headphones     ]: bcm2835_headpho - bcm2835 Headphones
