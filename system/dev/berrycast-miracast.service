@@ -1,0 +1,36 @@
+# Miracast (Windows + K) : Wi-Fi Direct, code PIN, négociation RTSP, lecteur GStreamer.
+#
+# Droits : utilisateur « berrycast » (pas root), avec seulement :
+# - groupe netdev : piloter wpa_supplicant par D-Bus (Wi-Fi Direct) ;
+# - groupes video, render, audio : afficher la vidéo (kmssink) et jouer le son ;
+# - capacités réseau : adresse IP du groupe Wi-Fi Direct (CAP_NET_ADMIN) et petit
+#   serveur DHCP pour le PC (CAP_NET_BIND_SERVICE, CAP_NET_RAW).
+
+[Unit]
+Description=BerryCast : Miracast (Windows + K)
+After=NetworkManager.service wpa_supplicant.service berrycast-devsetup.service
+Wants=NetworkManager.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=berrycast
+Group=berrycast
+SupplementaryGroups=netdev video render audio
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+WorkingDirectory=/opt/berrycast
+Environment=PYTHONPATH=/opt/berrycast
+Environment=PYTHONUNBUFFERED=1
+# /run/berrycast : état partagé avec l'écran HDMI (gardé quand le service s'arrête)
+RuntimeDirectory=berrycast
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/bin/python3 -m berrycast.miracast.service
+Restart=always
+RestartSec=5
+
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
