@@ -23,6 +23,9 @@ Environment=PYTHONUNBUFFERED=1
 # /run/berrycast : état partagé avec l'écran HDMI (gardé quand le service s'arrête)
 RuntimeDirectory=berrycast
 RuntimeDirectoryPreserve=yes
+# Cache des polices de GStreamer (sinon « Fontconfig error: No writable cache directories »)
+CacheDirectory=berrycast-miracast
+Environment=XDG_CACHE_HOME=/var/cache/berrycast-miracast
 ExecStart=/usr/bin/python3 -m berrycast.miracast.service
 Restart=always
 RestartSec=5

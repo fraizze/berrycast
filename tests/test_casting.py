@@ -357,3 +357,22 @@ def test_parse_ipv4():
     out = "3: wlan0    inet 192.168.1.20/24 brd 192.168.1.255 scope global wlan0" + chr(10)
     assert parse_ipv4(out) == "192.168.1.20"
     assert parse_ipv4("") is None
+
+
+def test_wait_screen_free(tmp_path):
+    cast_state.write("airplay", "ready", run_dir=tmp_path)
+    clock = [0.0]
+
+    def sleep(seconds):
+        clock[0] += seconds
+        if clock[0] > 1:  # UxPlay s'arrête au bout d'une seconde
+            cast_state.write("airplay", "off", run_dir=tmp_path)
+
+    assert cast_state.wait_screen_free("miracast", 5, tmp_path, sleep, lambda: clock[0])
+    assert 1 < clock[0] < 2
+    cast_state.write("airplay", "ready", run_dir=tmp_path)
+    assert not cast_state.wait_screen_free("miracast", 1, tmp_path,
+                                           lambda s: clock.__setitem__(0, clock[0] + s),
+                                           lambda: clock[0])
+    cast_state.write("miracast", "connecting", run_dir=tmp_path)
+    assert cast_state.other_wants_screen("airplay", tmp_path)

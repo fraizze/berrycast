@@ -167,12 +167,14 @@ class AirPlayService:
         pin = load_pin()
         try:
             while not self.stop_event.is_set():
-                if cast_state.other_is_casting(SOURCE):
+                # Windows prépare ou fait une diffusion : on libère l'écran (UxPlay le garde
+                # dès son démarrage, même sans iPhone connecté)
+                if cast_state.other_wants_screen(SOURCE):
                     if self.process:
-                        log.info("Diffusion Windows en cours : AirPlay mis en pause")
+                        log.info("Diffusion Windows : AirPlay mis en pause (écran libéré)")
                         self.stop_uxplay()
                     cast_state.write(SOURCE, "off", pin=pin)
-                    self.stop_event.wait(2)
+                    self.stop_event.wait(0.5)
                     continue
                 if self.process is None or self.process.poll() is not None:
                     if self.process is not None:

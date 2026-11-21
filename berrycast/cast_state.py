@@ -68,3 +68,25 @@ def read_all(run_dir: Path | None = None, now: float | None = None) -> dict[str,
 def other_is_casting(source: str, run_dir: Path | None = None, now: float | None = None) -> bool:
     return any(read(other, run_dir, now).get("state") == "casting"
                for other in SOURCES if other != source)
+
+
+def other_wants_screen(source: str, run_dir: Path | None = None, now: float | None = None) -> bool:
+    """L'autre source prépare ou fait une diffusion (« connecting » ou « casting »)."""
+    return any(read(other, run_dir, now).get("state") in ("connecting", "casting")
+               for other in SOURCES if other != source)
+
+
+def wait_screen_free(source: str, timeout: float = 8.0, run_dir: Path | None = None,
+                     sleep=time.sleep, clock=time.monotonic) -> bool:
+    """Attend que l'autre source ait libéré l'écran (son état passe à « off »).
+
+    Un seul programme à la fois peut piloter l'écran (« DRM master ») ; UxPlay le garde
+    dès son démarrage, même sans diffusion : il faut l'arrêter avant de lancer la vidéo.
+    """
+    deadline = clock() + timeout
+    while clock() < deadline:
+        others = [read(o, run_dir) for o in SOURCES if o != source]
+        if all(o.get("state") in (None, "off") for o in others):
+            return True
+        sleep(0.2)
+    return False

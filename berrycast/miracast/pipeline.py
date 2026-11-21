@@ -74,7 +74,9 @@ class Player:
         cmd = build_command(choose_decoder(), audio.alsa_device(self.audio_output))
         log.info("Lecteur : %s", " ".join(cmd))
         # Nouveau groupe de processus : on pourra tout arrêter d'un coup
-        self.process = subprocess.Popen(cmd, start_new_session=True)
+        # GST_DEBUG=2 : erreurs et avertissements de GStreamer dans le journal (diagnostic)
+        env = dict(os.environ, GST_DEBUG=os.environ.get("GST_DEBUG", "2"))
+        self.process = subprocess.Popen(cmd, start_new_session=True, env=env)
 
     def running(self) -> bool:
         return self.process is not None and self.process.poll() is None

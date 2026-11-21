@@ -111,6 +111,8 @@ class MiracastService:
         playing = threading.Event()
 
         def on_play() -> None:
+            if not cast_state.wait_screen_free(SOURCE):
+                log.warning("AirPlay n'a pas libéré l'écran à temps : essai quand même")
             self.player.start()
             playing.set()
             cast_state.write(SOURCE, "casting", peer=self.peer)
