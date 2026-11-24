@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="252" height="22" role="img" aria-label="Raspberry Pi : 3 · 4 · 5 · Zero 2 W">
+  <rect width="252" height="22" rx="4" fill="#c51a4a"/>
+  <rect width="98" height="22" rx="4" fill="#3a3f52"/>
+  <rect x="94" width="4" height="22" fill="#3a3f52"/>
+  <g font-family="Verdana, DejaVu Sans, sans-serif" font-size="11.5" fill="#fff">
+    <text x="49.0" y="15" text-anchor="middle">Raspberry Pi</text>
+    <text x="175.0" y="15" text-anchor="middle" font-weight="700">3 · 4 · 5 · Zero 2 W</text>
+  </g>
+</svg>

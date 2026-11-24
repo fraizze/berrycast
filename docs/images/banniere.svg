@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-label="BerryCast : votre TV devient un écran sans fil">
+  <defs>
+    <linearGradient id="fond" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14161c"/><stop offset="1" stop-color="#1e2230"/>
+    </linearGradient>
+    <linearGradient id="framboise" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff4f7b"/><stop offset="1" stop-color="#c51a4a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="320" rx="24" fill="url(#fond)"/>
+  <!-- TV -->
+  <g transform="translate(110 70)">
+    <rect x="0" y="0" width="250" height="150" rx="14" fill="#000" stroke="#3a3f52" stroke-width="6"/>
+    <text x="125" y="70" text-anchor="middle" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="22" font-weight="700" fill="#fff">TV Salon</text>
+    <text x="125" y="100" text-anchor="middle" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#c9cbd3">Prêt à recevoir</text>
+    <rect x="100" y="150" width="50" height="16" fill="#3a3f52"/>
+    <rect x="70" y="164" width="110" height="10" rx="5" fill="#3a3f52"/>
+    <!-- ondes -->
+    <g fill="none" stroke="url(#framboise)" stroke-width="7" stroke-linecap="round">
+      <path d="M 268 30 a 40 40 0 0 1 0 60"/>
+      <path d="M 288 12 a 66 66 0 0 1 0 96"/>
+      <path d="M 308 -6 a 92 92 0 0 1 0 132"/>
+    </g>
+  </g>
+  <text x="470" y="150" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="86" font-weight="800" fill="#fff">Berry<tspan fill="url(#framboise)">Cast</tspan></text>
+  <text x="474" y="200" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="28" fill="#c9cbd3">Votre TV devient un écran sans fil</text>
+  <g font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="20" font-weight="600">
+    <rect x="474" y="228" width="210" height="40" rx="20" fill="#2a6df4"/>
+    <text x="579" y="255" text-anchor="middle" fill="#fff">Windows + K</text>
+    <rect x="698" y="228" width="268" height="40" rx="20" fill="#f2f3f7"/>
+    <text x="832" y="255" text-anchor="middle" fill="#14161c">Recopie de l'écran</text>
+    <rect x="980" y="228" width="196" height="40" rx="20" fill="none" stroke="#ff4f7b" stroke-width="2"/>
+    <text x="1078" y="255" text-anchor="middle" fill="#ff4f7b">Raspberry Pi</text>
+  </g>
+</svg>
