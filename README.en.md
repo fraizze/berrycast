@@ -1,12 +1,6 @@
-![BerryCast: turn your TV into a wireless display](docs/images/banner-en.svg)
+# BerryCast
 
 [Français](README.md) · **English**
-
-![status: in development](docs/images/badges/status-en.svg)
-![Windows + K: works](docs/images/badges/windows-en.svg)
-![iPhone / iPad / Mac: works](docs/images/badges/iphone-en.svg)
-![Raspberry Pi 3, 4, 5, Zero 2 W](docs/images/badges/raspberry.svg)
-![license GPL-3.0+](docs/images/badges/license-en.svg)
 
 BerryCast turns a **Raspberry Pi** plugged into a TV over HDMI into a **wireless display**:
 
@@ -14,6 +8,12 @@ BerryCast turns a **Raspberry Pi** plugged into a TV over HDMI into a **wireless
 - 📱 from an **iPhone, iPad or Mac**: use **Screen Mirroring**, then pick your BerryCast.
 
 Nothing to install on the PC or the iPhone. No command line needed to use it.
+
+![status: in development](docs/images/badges/status-en.svg)
+![Windows + K: works](docs/images/badges/windows-en.svg)
+![iPhone / iPad / Mac: works](docs/images/badges/iphone-en.svg)
+![Raspberry Pi 3, 4, 5, Zero 2 W](docs/images/badges/raspberry.svg)
+![license GPL-3.0+](docs/images/badges/license-en.svg)
 
 > [!NOTE]
 > **In development.** Windows + K and iPhone mirroring (portrait and landscape) work on a

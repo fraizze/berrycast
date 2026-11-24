@@ -1,12 +1,6 @@
-![BerryCast : votre TV devient un écran sans fil](docs/images/banniere.svg)
+# BerryCast
 
 **Français** · [English](README.en.md)
-
-![statut : en développement](docs/images/badges/statut.svg)
-![Windows + K : fonctionne](docs/images/badges/windows.svg)
-![iPhone / iPad / Mac : fonctionne](docs/images/badges/iphone.svg)
-![Raspberry Pi 3, 4, 5, Zero 2 W](docs/images/badges/raspberry.svg)
-![licence GPL-3.0+](docs/images/badges/licence.svg)
 
 BerryCast transforme un **Raspberry Pi** branché en HDMI sur une TV en **écran sans fil** :
 
@@ -14,6 +8,12 @@ BerryCast transforme un **Raspberry Pi** branché en HDMI sur une TV en **écran
 - 📱 depuis un **iPhone, iPad ou Mac** : **« Recopie de l'écran »**, puis le nom de votre BerryCast.
 
 Rien à installer sur le PC ni sur l'iPhone. Aucune ligne de commande pour l'utiliser.
+
+![statut : en développement](docs/images/badges/statut.svg)
+![Windows + K : fonctionne](docs/images/badges/windows.svg)
+![iPhone / iPad / Mac : fonctionne](docs/images/badges/iphone.svg)
+![Raspberry Pi 3, 4, 5, Zero 2 W](docs/images/badges/raspberry.svg)
+![licence GPL-3.0+](docs/images/badges/licence.svg)
 
 > [!NOTE]
 > **En développement.** Windows + K et la recopie de l'iPhone (portrait et paysage) fonctionnent
